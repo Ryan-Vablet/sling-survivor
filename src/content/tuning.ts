@@ -19,9 +19,12 @@ export const TUNING = {
     stallTime: 1.5        // seconds below stallSpeed to end run
   },
   launcher: {
+    originX: 120,
+    originY: 320,
     powerMin: 400,
     powerMax: 1600,
-    powerScale: 2.0 // pixels dragged -> power scalar
+    powerScale: 2.0,
+    maxPullDist: 400
   },
   enemy: {
     spawnEverySec: 2.0,

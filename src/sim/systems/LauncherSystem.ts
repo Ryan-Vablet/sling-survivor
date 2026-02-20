@@ -4,26 +4,31 @@ import type { PointerDrag } from "../../core/input/PointerDrag";
 import { v2 } from "../../core/math/vec2";
 
 export class LauncherSystem {
-  // Launcher origin in screen space is handled by scene; this system expects world coords impulse.
-  // For scaffold: we interpret drag vector into an initial velocity impulse.
-  applyLaunch(player: Player, drag: PointerDrag, worldFromScreen: (sx: number, sy: number) => { x: number; y: number }) {
+  /**
+   * Anchored slingshot: pull vector = anchorScreen - pointerScreen.
+   * Launch direction matches the pull-back direction (drag away from anchor to aim).
+   */
+  applyLaunch(player: Player, drag: PointerDrag, anchorScreenX: number, anchorScreenY: number) {
     const st = drag.state;
     if (player.launched) return;
-    if (st.isDragging) return;
+    if (!st.released) return;
 
-    // If the user never dragged, do nothing.
-    const dx = st.startX - st.x;
-    const dy = st.startY - st.y;
+    const dx = anchorScreenX - st.x;
+    const dy = anchorScreenY - st.y;
     const dist = Math.hypot(dx, dy);
+
+    st.released = false;
     if (dist < 6) return;
 
-    const power = Math.min(TUNING.launcher.powerMax, Math.max(TUNING.launcher.powerMin, dist * TUNING.launcher.powerScale));
+    const clampedDist = Math.min(dist, TUNING.launcher.maxPullDist);
+    const power = Math.min(
+      TUNING.launcher.powerMax,
+      Math.max(TUNING.launcher.powerMin, clampedDist * TUNING.launcher.powerScale)
+    );
     const dir = v2.norm({ x: dx, y: dy });
 
-    // Apply as velocity impulse
     player.vel.x = dir.x * power;
     player.vel.y = dir.y * power;
-
     player.launched = true;
   }
 }

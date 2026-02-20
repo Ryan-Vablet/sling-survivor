@@ -1,5 +1,6 @@
 export type DragState = {
   isDragging: boolean;
+  released: boolean;
   startX: number;
   startY: number;
   x: number;
@@ -7,7 +8,7 @@ export type DragState = {
 };
 
 export class PointerDrag {
-  state: DragState = { isDragging: false, startX: 0, startY: 0, x: 0, y: 0 };
+  state: DragState = { isDragging: false, released: false, startX: 0, startY: 0, x: 0, y: 0 };
 
   constructor(private el: HTMLElement) {
     el.addEventListener("pointerdown", this.onDown);
@@ -33,6 +34,9 @@ export class PointerDrag {
   };
 
   private onUp = (_e: PointerEvent) => {
+    if (this.state.isDragging) {
+      this.state.released = true;
+    }
     this.state.isDragging = false;
   };
 }

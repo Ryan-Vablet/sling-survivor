@@ -49,7 +49,12 @@ export class CollisionSystem {
       }
     }
 
-    // cleanup
-    for (const p of projectiles) if (!p.alive) {}
+    // cleanup dead entities (back-to-front splice to keep indices stable)
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      if (!projectiles[i].alive) projectiles.splice(i, 1);
+    }
+    for (let i = drones.length - 1; i >= 0; i--) {
+      if (!drones[i].alive) drones.splice(i, 1);
+    }
   }
 }

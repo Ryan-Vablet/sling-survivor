@@ -22,6 +22,6 @@ export async function createApp(root: HTMLElement) {
 
   // Simple global debug toggle
   window.addEventListener("keydown", (e) => {
-    if (e.key.toLowerCase() === "d") debug.enabled = !debug.enabled;
+    if (e.key === "`") debug.enabled = !debug.enabled;
   });
 }

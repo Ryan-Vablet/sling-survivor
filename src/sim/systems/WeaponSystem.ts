@@ -6,6 +6,11 @@ export class WeaponSystem {
   private cooldownT = 0;
   private nextId = 1;
 
+  reset() {
+    this.cooldownT = 0;
+    this.nextId = 1;
+  }
+
   step(player: Player, drones: Drone[], projectiles: Projectile[], dt: number) {
     if (!player.launched) return;
 

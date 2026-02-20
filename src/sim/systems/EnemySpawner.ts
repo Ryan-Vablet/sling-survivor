@@ -5,6 +5,11 @@ export class EnemySpawner {
   private t = 0;
   private nextId = 1;
 
+  reset() {
+    this.t = 0;
+    this.nextId = 1;
+  }
+
   step(player: Player, drones: Drone[], dt: number) {
     if (!player.launched) return;
 
