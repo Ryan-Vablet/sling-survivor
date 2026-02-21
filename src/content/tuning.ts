@@ -14,7 +14,7 @@ export const TUNING = {
     boostMax: 100,
     boostDrainPerSec: 14, // ~7s to empty
     boostRegenPerSec: 8,  // ~12.5s to full (only when boostAutoRegen is true)
-    boostAutoRegen: false, // future skill unlock
+    boostAutoRegen: true,
     thrustAccel: 1400,    // px/s^2
     stallSpeed: 35,       // px/s
     stallTime: 1.5        // seconds below stallSpeed to end run
@@ -40,11 +40,17 @@ export const TUNING = {
     projectileSpeed: 900,
     damage: 10
   },
-  milestones: {
-    firstDistanceM: 300,
-    distanceIntervalM: 500,
-    firstKills: 5,
-    killsInterval: 10
+  rounds: {
+    startingRockets: 3,
+    baseToll: 100,
+    tollScale: 1.7,
+  },
+  xp: {
+    baseToLevel: 50,
+    levelScale: 1.35,
+    perKm: 50,
+    perKill: 25,
+    coinPerKill: 8,
   },
   elite: {
     spawnEveryN: 5,

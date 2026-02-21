@@ -11,9 +11,9 @@ export class EndScreen {
 
   layout(w: number, h: number) {
     this.panel.clear();
-    this.panel.roundRect(0, 0, 420, 260, 18).fill({ color: 0x000000, alpha: 0.55 });
+    this.panel.roundRect(0, 0, 420, 380, 18).fill({ color: 0x000000, alpha: 0.55 });
     this.panel.x = (w - 420) / 2;
-    this.panel.y = (h - 260) / 2;
+    this.panel.y = (h - 380) / 2;
 
     this.text.anchor.set(0.5);
     this.text.x = w / 2;

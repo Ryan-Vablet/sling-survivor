@@ -73,6 +73,7 @@ export class RunScene implements IScene {
   private freshReset = false;
   private shakeT = 0;
   private shakeIntensity = 0;
+  private lastDistanceM = 0;
 
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
@@ -116,16 +117,10 @@ export class RunScene implements IScene {
       if (!this.player.launched) return;
 
       if (e.key === "u") {
-        const choices = rollUpgradeChoices(
-          this.runState.rng,
-          this.runState.appliedUpgrades,
-          3,
-          this.runState.weaponLoadout
+        this.runState.pendingLevelUps++;
+        this.toast.show(
+          `+1 pending (${this.runState.pendingLevelUps} queued)`
         );
-        if (choices.length > 0) {
-          this.runState.paused = true;
-          this.showUpgradePick(choices);
-        }
       } else if (e.key === "e") {
         this.tryEvolve();
       } else if (e.key === "p") {
@@ -177,11 +172,45 @@ export class RunScene implements IScene {
     this.droneAI.reset();
     this.upgradeOverlay.hide();
     this.shakeT = 0;
+    this.lastDistanceM = 0;
 
     const params = new URLSearchParams(window.location.search);
     const seedParam = params.get("seed");
     const seed = seedParam ? parseInt(seedParam, 10) : undefined;
     this.runState = new RunState(seed);
+
+    if (this.drag) {
+      this.drag.state.isDragging = false;
+      this.drag.state.released = false;
+    }
+    this.freshReset = true;
+
+    const ps = this.runState.playerStats;
+    this.player = {
+      pos: { x: TUNING.launcher.originX, y: TUNING.launcher.originY },
+      vel: { x: 0, y: 0 },
+      radius: TUNING.player.radius,
+      hp: ps.hpMax,
+      boost: ps.boostMax,
+      dragDebuffT: 0,
+      launched: false,
+      stallT: 0,
+      kills: 0,
+      hits: 0,
+    };
+  }
+
+  private resetRocket() {
+    this.ended = false;
+    this.drones = [];
+    this.projectiles = [];
+    this.enemyBullets = [];
+    this.spawner.reset();
+    this.weapon.reset();
+    this.droneAI.reset();
+    this.upgradeOverlay.hide();
+    this.shakeT = 0;
+    this.lastDistanceM = 0;
 
     if (this.drag) {
       this.drag.state.isDragging = false;
@@ -228,13 +257,20 @@ export class RunScene implements IScene {
     if (!this.player.launched) return;
 
     const ps = this.runState.playerStats;
+
+    this.thrust.step(this.player, this.kb, ps, dt);
+    this.world.stepPlayer(this.player, dt);
+
     const distanceM = Math.max(
       0,
       (this.player.pos.x - TUNING.launcher.originX) / 10
     );
 
-    this.thrust.step(this.player, this.kb, ps, dt);
-    this.world.stepPlayer(this.player, dt);
+    const distDeltaM = Math.max(0, distanceM - this.lastDistanceM);
+    if (distDeltaM > 0) {
+      this.runState.currentXp += distDeltaM * (TUNING.xp.perKm / 1000);
+    }
+    this.lastDistanceM = distanceM;
 
     this.spawner.step(
       this.player,
@@ -252,6 +288,8 @@ export class RunScene implements IScene {
       this.runState,
       dt
     );
+
+    const killsBefore = this.player.kills;
     this.collide.step(
       this.player,
       this.drones,
@@ -260,42 +298,53 @@ export class RunScene implements IScene {
       ps,
       dt
     );
+    const killsDelta = this.player.kills - killsBefore;
+    if (killsDelta > 0) {
+      this.runState.coins += killsDelta * TUNING.xp.coinPerKill;
+      this.runState.currentXp += killsDelta * TUNING.xp.perKill;
+      this.runState.totalKills += killsDelta;
+    }
 
-    const choices = this.upgradeSys.checkMilestone(
-      distanceM,
-      this.player.kills,
-      this.runState
-    );
-    if (choices) {
-      this.showUpgradePick(choices);
-      return;
+    const levelBefore = this.runState.currentLevel;
+    this.upgradeSys.checkLevelUp(this.runState);
+    if (this.runState.currentLevel > levelBefore) {
+      this.toast.show(`Level ${this.runState.currentLevel}!`);
     }
 
     if (this.stall.step(this.player, ps, dt)) {
-      this.endRun();
+      this.endRocket();
     }
   }
 
-  private showUpgradePick(
-    choices: import("../../content/upgrades/upgradeTypes").UpgradeChoice[]
-  ) {
+  private drainPendingUpgrades(onDone: () => void) {
+    if (this.runState.pendingLevelUps <= 0) {
+      onDone();
+      return;
+    }
+
+    this.runState.pendingLevelUps--;
+    const choices = rollUpgradeChoices(
+      this.runState.rng,
+      this.runState.appliedUpgrades,
+      3,
+      this.runState.weaponLoadout
+    );
+
+    if (choices.length === 0) {
+      this.runState.pendingLevelUps = 0;
+      onDone();
+      return;
+    }
+
     const app = this.scenes.getApp();
     this.upgradeOverlay.show(
       choices,
       app.renderer.width,
       app.renderer.height,
       (id) => {
-        const oldHpMax = this.runState.playerStats.hpMax;
-        const oldBoostMax = this.runState.playerStats.boostMax;
-
         this.upgradeSys.applyChoice(this.runState, id);
-
-        const hpGain = this.runState.playerStats.hpMax - oldHpMax;
-        if (hpGain > 0) this.player.hp += hpGain;
-        const boostGain = this.runState.playerStats.boostMax - oldBoostMax;
-        if (boostGain > 0) this.player.boost += boostGain;
-
         this.tryEvolve();
+        this.drainPendingUpgrades(onDone);
       }
     );
   }
@@ -343,38 +392,104 @@ export class RunScene implements IScene {
       hpMax: ps.hpMax,
       boost: this.player.boost,
       boostMax: ps.boostMax,
+      round: this.runState.currentRound,
+      rocketsLeft: this.runState.rocketsRemaining,
+      coins: this.runState.coins,
+      roundToll: this.runState.roundCoinToll,
+      xp: this.runState.currentXp,
+      xpMax: this.runState.xpToNextLevel,
+      level: this.runState.currentLevel,
     });
 
-    if (this.ended) {
-      if (!this.layers.ui.children.includes(this.end.root)) {
-        this.layers.ui.addChild(this.end.root);
-        this.end.layout(app.renderer.width, app.renderer.height);
-      }
-    }
+    
   }
 
-  private endRun() {
+  private endRocket() {
     this.ended = true;
     const distanceM = Math.max(
       0,
       (this.player.pos.x - TUNING.launcher.originX) / 10
     );
-    const speed = Math.hypot(this.player.vel.x, this.player.vel.y);
-    const score = distanceM * (1 + this.player.kills * 0.01);
 
-    const upgrades = [...this.runState.appliedUpgrades.entries()]
-      .map(([id, n]) => `  ${id} x${n}`)
-      .join("\n");
+    if (this.runState.coins >= this.runState.roundCoinToll) {
+      const tollPaid = this.runState.roundCoinToll;
+      this.runState.coins -= this.runState.roundCoinToll;
+      this.runState.currentRound++;
+      this.runState.rocketsRemaining = TUNING.rounds.startingRockets;
+      this.runState.roundCoinToll = Math.round(
+        tollPaid * TUNING.rounds.tollScale
+      );
 
-    const evos = [...this.runState.appliedEvolutions]
-      .map((id) => `  ${id}`)
-      .join("\n");
+      const pending = this.runState.pendingLevelUps;
+      const pendingText =
+        pending > 0
+          ? `\n${pending} upgrade${pending > 1 ? "s" : ""} pending!`
+          : "";
 
-    this.end.setText(
-      `RUN OVER\n\nDistance: ${distanceM.toFixed(0)}m\nKills: ${this.player.kills}\nHits: ${this.player.hits}\nSpeed: ${speed.toFixed(1)}\n\nScore: ${score.toFixed(0)}${upgrades ? `\n\nUpgrades:\n${upgrades}` : ""}${evos ? `\n\nEvolutions:\n${evos}` : ""}\n\nClick to Restart`
-    );
+      this.end.setText(
+        `ROUND ${this.runState.currentRound - 1} COMPLETE!\n\n` +
+          `Toll paid: ${tollPaid} coins\n` +
+          `Coins remaining: ${this.runState.coins}\n` +
+          `Next toll: ${this.runState.roundCoinToll}\n` +
+          `Rockets: ${this.runState.rocketsRemaining}` +
+          `${pendingText}\n\n` +
+          `Click to continue`
+      );
+      this.showEndScreenOverlay(() =>
+        this.drainPendingUpgrades(() => this.resetRocket())
+      );
+    } else {
+      this.runState.rocketsRemaining--;
 
+      if (this.runState.rocketsRemaining > 0) {
+        const pending = this.runState.pendingLevelUps;
+        const pendingText =
+          pending > 0
+            ? `\n${pending} upgrade${pending > 1 ? "s" : ""} pending!`
+            : "";
+
+        this.end.setText(
+          `ROCKET LOST\n\n` +
+            `Dist: ${distanceM.toFixed(0)}m  Kills: ${this.player.kills}\n` +
+            `Rockets remaining: ${this.runState.rocketsRemaining}\n` +
+            `Coins: ${this.runState.coins} / ${this.runState.roundCoinToll}` +
+            `${pendingText}\n\n` +
+            `Click to relaunch`
+        );
+        this.showEndScreenOverlay(() =>
+          this.drainPendingUpgrades(() => this.resetRocket())
+        );
+      } else {
+        const upgrades = [...this.runState.appliedUpgrades.entries()]
+          .map(([id, n]) => `  ${id} x${n}`)
+          .join("\n");
+        const evos = [...this.runState.appliedEvolutions]
+          .map((id) => `  ${id}`)
+          .join("\n");
+
+        this.end.setText(
+          `GAME OVER\n\n` +
+            `Round: ${this.runState.currentRound}\n` +
+            `Total Kills: ${this.runState.totalKills}\n` +
+            `Level: ${this.runState.currentLevel}\n` +
+            `Coins: ${this.runState.coins}` +
+            `${upgrades ? `\n\nUpgrades:\n${upgrades}` : ""}` +
+            `${evos ? `\n\nEvolutions:\n${evos}` : ""}\n\n` +
+            `Click to restart`
+        );
+        this.showEndScreenOverlay(() => this.resetRun());
+      }
+    }
+  }
+
+  private showEndScreenOverlay(onContinue: () => void) {
     const app = this.scenes.getApp();
+
+    if (!this.layers.ui.children.includes(this.end.root)) {
+      this.layers.ui.addChild(this.end.root);
+    }
+    this.end.layout(app.renderer.width, app.renderer.height);
+
     if (this.endClickHandler) {
       app.canvas.removeEventListener("pointerdown", this.endClickHandler);
     }
@@ -382,7 +497,7 @@ export class RunScene implements IScene {
       app.canvas.removeEventListener("pointerdown", this.endClickHandler!);
       this.endClickHandler = null;
       this.layers.ui.removeChild(this.end.root);
-      this.resetRun();
+      onContinue();
     };
     app.canvas.addEventListener("pointerdown", this.endClickHandler);
   }

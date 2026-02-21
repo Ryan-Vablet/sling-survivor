@@ -44,14 +44,27 @@ npm test
 |-----------|---------|-------------|
 | `seed` | `?seed=12345` | Fix the RNG seed for a deterministic run |
 
-## Upgrades & Milestones
+## Game Loop
 
-During a run, upgrade picks are triggered at distance and kill milestones:
+Each **run** consists of multiple **rounds**. Each round gives the player a limited number of **rockets** (launch attempts).
 
-- **First distance milestone:** 300m, then every 500m
-- **First kills milestone:** 5 kills, then every 10 kills
+| Concept | Description |
+|---------|-------------|
+| Rocket | One slingshot launch. Earn XP + coins during flight. |
+| XP | Gained from distance + kills. Triggers upgrade picks on level-up. |
+| Coins | Gained from kills. Used to pay the round toll. |
+| Round Toll | Pay coins to advance to the next round. Rockets reset. |
+| Game Over | Rockets reach 0 before toll is paid. |
 
-When a milestone is reached, the sim pauses and 3 upgrade cards appear. You must pick one to resume. Upgrades stack (unless marked non-stackable).
+Upgrades and evolutions persist across rockets within the same run.
+
+### XP & Leveling
+
+XP is earned primarily from kills (25 XP / kill) with a small background trickle from distance (50 XP / km). When enough XP is accumulated, the player levels up and 3 upgrade cards appear. XP scaling: each level requires 1.35x more XP than the previous.
+
+### Coins & Toll
+
+Kills grant coins (8 / kill). Coins accumulate across rockets. When a rocket ends, if coins >= toll, the toll is paid, the round advances, and rockets reset. If not, a rocket is consumed. Toll scales 1.7x per round.
 
 ### Available Upgrades
 
@@ -119,4 +132,4 @@ src/
   render/         ← camera, layers, asset loading
 ```
 
-Upgrades are data-driven: definitions in `src/content/upgrades/`, runtime effects computed in `RunState`, applied by `UpgradeSystem`. Evolutions are data-driven: definitions in `src/content/evolutions/`, checked by `EvolutionSystem` after each upgrade apply. Baseline stats come from `TUNING`; derived stats are recomputed on each upgrade/evolution application.
+Upgrades are data-driven: definitions in `src/content/upgrades/`, runtime effects computed in `RunState`, applied by `UpgradeSystem`. Evolutions are data-driven: definitions in `src/content/evolutions/`, checked by `EvolutionSystem` after each upgrade apply. Baseline stats come from `TUNING`; derived stats are recomputed on each upgrade/evolution application. The game loop (rounds, rockets, XP, coins, toll) is managed by `RunState` and orchestrated by `RunScene`.

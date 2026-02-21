@@ -33,8 +33,16 @@ export class RunState {
   seed: number;
   rng: RNG;
 
-  nextUpgradeDistM: number;
-  nextUpgradeKills: number;
+  currentRound = 1;
+  rocketsRemaining: number;
+  coins = 0;
+  roundCoinToll: number;
+
+  currentXp = 0;
+  xpToNextLevel: number;
+  currentLevel = 0;
+  pendingLevelUps = 0;
+  totalKills = 0;
 
   appliedUpgrades: Map<string, number> = new Map();
   appliedEvolutions: Set<string> = new Set();
@@ -48,8 +56,9 @@ export class RunState {
   constructor(seed?: number) {
     this.seed = seed ?? Date.now();
     this.rng = new RNG(this.seed);
-    this.nextUpgradeDistM = TUNING.milestones.firstDistanceM;
-    this.nextUpgradeKills = TUNING.milestones.firstKills;
+    this.rocketsRemaining = TUNING.rounds.startingRockets;
+    this.roundCoinToll = TUNING.rounds.baseToll;
+    this.xpToNextLevel = TUNING.xp.baseToLevel;
     this.recomputeStats();
   }
 
