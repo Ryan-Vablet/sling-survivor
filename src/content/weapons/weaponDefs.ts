@@ -11,6 +11,7 @@ export type WeaponDef = {
   baseExtraShots: number;
   targetMode: TargetMode;
   projectileLifeT: number;
+  basePierceCount: number;
 };
 
 export const WEAPON_DEFS: Record<string, WeaponDef> = {
@@ -25,6 +26,7 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
     baseExtraShots: 0,
     targetMode: "nearest",
     projectileLifeT: 1.2,
+    basePierceCount: 0,
   },
   rear_blaster: {
     id: "rear_blaster",
@@ -37,5 +39,19 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
     baseExtraShots: 0,
     targetMode: "rear",
     projectileLifeT: 1.0,
+    basePierceCount: 0,
+  },
+  rail_cannon: {
+    id: "rail_cannon",
+    name: "Rail Cannon",
+    tags: ["ballistic", "auto", "piercing", "rail"],
+    baseCooldown: 0.75,
+    baseDamage: 40,
+    baseProjectileSpeed: 1400,
+    baseRange: 700,
+    baseExtraShots: 0,
+    targetMode: "nearest",
+    projectileLifeT: 1.0,
+    basePierceCount: 5,
   },
 };

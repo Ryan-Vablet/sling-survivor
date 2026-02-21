@@ -58,5 +58,21 @@ export const TUNING = {
     spawnIntervalMin: 0.8,
     maxAliveGrowth: 0.005,
     maxAliveCap: 15
+  },
+  shooter: {
+    preferDistMin: 350,
+    preferDistMax: 550,
+    speed: 180,
+    hp: 15,
+    radius: 12,
+    fireCooldown: 1.5,
+    bulletSpeed: 350,
+    bulletDamage: 1,
+    bulletSpeedRetain: 0.9,
+    bulletDragDebuff: 0.3,
+    bulletLifeT: 2.5,
+    bulletRadius: 5,
+    spawnRatio: 0.25,
+    minDistanceM: 200
   }
 } as const;

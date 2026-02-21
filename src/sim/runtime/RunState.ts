@@ -26,6 +26,7 @@ export type DerivedWeaponStats = {
   extraShots: number;
   targetMode: TargetMode;
   projectileLifeT: number;
+  pierceCount: number;
 };
 
 export class RunState {
@@ -36,6 +37,7 @@ export class RunState {
   nextUpgradeKills: number;
 
   appliedUpgrades: Map<string, number> = new Map();
+  appliedEvolutions: Set<string> = new Set();
   weaponLoadout: string[] = ["auto_cannon"];
 
   playerStats!: DerivedPlayerStats;
@@ -174,6 +176,7 @@ export class RunState {
         extraShots: wdef.baseExtraShots + extraShotsAdd,
         targetMode: wdef.targetMode,
         projectileLifeT: wdef.projectileLifeT,
+        pierceCount: wdef.basePierceCount,
       });
     }
 

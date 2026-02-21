@@ -35,6 +35,8 @@ npm test
 | 1 / 2 / 3 | Select upgrade card during pick screen |
 | `` ` `` (backtick) | Toggle debug overlay |
 | U | Force an upgrade pick (debug) |
+| E | Force evolution check (debug) |
+| P | Spawn a shooter drone nearby (debug) |
 
 ## URL Parameters
 
@@ -70,22 +72,46 @@ When a milestone is reached, the sim pauses and 3 upgrade cards appear. You must
 
 ### Weapons
 
-- **Auto-Cannon** (default): Fires at nearest drone in range.
-- **Rear Blaster** (unlock via upgrade): Fires behind the player's velocity vector.
+| Weapon | Acquire | Tags | Notes |
+|--------|---------|------|-------|
+| Auto-Cannon | Default | `ballistic`, `auto` | Fires at nearest drone |
+| Rear Blaster | Upgrade unlock | `ballistic`, `rear` | Fires behind velocity vector |
+| Rail Cannon | Evolution | `ballistic`, `auto`, `piercing`, `rail` | Pierces up to 5 enemies per shot |
 
-Both weapons support upgrade mods (cooldown, damage, speed, extra shots) via weapon tags.
+Weapons support upgrade mods (cooldown, damage, speed, extra shots) via tag matching.
 
-## Enemy Ramp
+### Weapon Evolutions
 
-- Spawn interval decreases gently with distance (min 0.8s)
-- Max alive drones increases with distance (cap 15)
-- Every 5th spawn is an **elite drone**: larger, faster, more HP, more contact damage
+Evolutions transform a weapon when upgrade prerequisites are met.
+
+| Evolution | Recipe | Result |
+|-----------|--------|--------|
+| Auto → Rail Cannon | Double Tap ×1 + High Velocity ×1 + Armor Piercing ×1 | Auto-Cannon replaced by Rail Cannon |
+
+Evolutions trigger automatically after picking the qualifying upgrade. A toast notification and screen shake confirm the evolution.
+
+## Enemies
+
+### Chaser Drones
+- Chase the player directly; deal contact damage + momentum penalty
+- Every 5th spawn is an **elite**: larger, faster, 60 HP, 4 contact damage
+
+### Shooter Drones
+- Appear after 200m (~25% of spawns)
+- Maintain distance (350–550px), strafe when in range
+- Fire slow bullets (350 px/s) every 1.5s
+- Bullets apply light momentum penalty (vel ×0.9) + 0.3s drag debuff + 1 damage
+- Visually orange with ring outline; bullets are red-orange
+
+### Ramp
+- Spawn interval decreases with distance (min 0.8s)
+- Max alive increases with distance (cap 15)
 
 ## Architecture
 
 ```
 src/
-  content/        ← pure data: tuning, upgrade defs, weapon defs
+  content/        ← pure data: tuning, upgrade defs, weapon defs, evolution defs
   core/           ← engine: input, RNG, math, debug
   sim/            ← runtime: entities, physics, systems, RunState
   ui/             ← Pixi UI: HUD, end screen, upgrade overlay
@@ -93,4 +119,4 @@ src/
   render/         ← camera, layers, asset loading
 ```
 
-Upgrades are data-driven: definitions in `src/content/upgrades/`, runtime effects computed in `RunState`, applied by `UpgradeSystem`. Baseline stats come from `TUNING`; derived stats are recomputed on each upgrade application.
+Upgrades are data-driven: definitions in `src/content/upgrades/`, runtime effects computed in `RunState`, applied by `UpgradeSystem`. Evolutions are data-driven: definitions in `src/content/evolutions/`, checked by `EvolutionSystem` after each upgrade apply. Baseline stats come from `TUNING`; derived stats are recomputed on each upgrade/evolution application.

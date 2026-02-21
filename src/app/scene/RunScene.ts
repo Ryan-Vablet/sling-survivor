@@ -7,7 +7,7 @@ import { loadAssets } from "../../render/assets";
 import { Keyboard } from "../../core/input/Keyboard";
 import { PointerDrag } from "../../core/input/PointerDrag";
 import { TUNING } from "../../content/tuning";
-import type { Drone, Player, Projectile } from "../../sim/entities";
+import type { Drone, Player, Projectile, EnemyBullet } from "../../sim/entities";
 import { PhysicsWorld } from "../../sim/world/PhysicsWorld";
 import { BoostThrustSystem } from "../../sim/systems/BoostThrustSystem";
 import { LauncherSystem } from "../../sim/systems/LauncherSystem";
@@ -17,11 +17,13 @@ import { WeaponSystem } from "../../sim/systems/WeaponSystem";
 import { CollisionSystem } from "../../sim/systems/CollisionSystem";
 import { StallSystem } from "../../sim/systems/StallSystem";
 import { UpgradeSystem } from "../../sim/systems/UpgradeSystem";
+import { EvolutionSystem } from "../../sim/systems/EvolutionSystem";
 import { RunState } from "../../sim/runtime/RunState";
 import { rollUpgradeChoices } from "../../content/upgrades/upgradePool";
 import { Hud } from "../../ui/Hud";
 import { EndScreen } from "../../ui/EndScreen";
 import { UpgradeOverlay } from "../../ui/UpgradeOverlay";
+import { Toast } from "../../ui/Toast";
 
 type Star = { x: number; y: number; a: number; r: number; p: number };
 
@@ -47,13 +49,16 @@ export class RunScene implements IScene {
   private collide = new CollisionSystem();
   private stall = new StallSystem();
   private upgradeSys = new UpgradeSystem();
+  private evolutionSys = new EvolutionSystem();
 
   private runState!: RunState;
   private upgradeOverlay = new UpgradeOverlay();
+  private toast = new Toast();
 
   private player!: Player;
   private drones: Drone[] = [];
   private projectiles: Projectile[] = [];
+  private enemyBullets: EnemyBullet[] = [];
 
   private gfxWorld = new Graphics();
   private gfxDebug = new Graphics();
@@ -66,6 +71,8 @@ export class RunScene implements IScene {
   private endClickHandler: (() => void) | null = null;
   private debugKeyHandler: (() => void) | null = null;
   private freshReset = false;
+  private shakeT = 0;
+  private shakeIntensity = 0;
 
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
@@ -82,6 +89,7 @@ export class RunScene implements IScene {
     this.layers.world.addChild(this.gfxDebug);
     this.layers.ui.addChild(this.hud.root);
     this.layers.ui.addChild(this.upgradeOverlay.root);
+    this.layers.ui.addChild(this.toast.root);
 
     this.cam = new Camera2D(this.layers.world);
 
@@ -98,17 +106,16 @@ export class RunScene implements IScene {
       this.hud.resize(w);
       this.end.layout(w, h);
       this.upgradeOverlay.layout(w, h);
+      this.toast.layout(w, h);
     };
     window.addEventListener("resize", this.resizeHandler);
     this.resizeHandler();
 
     const onDbgKey = (e: KeyboardEvent) => {
-      if (
-        e.key === "u" &&
-        !this.runState.paused &&
-        this.player.launched &&
-        !this.ended
-      ) {
+      if (this.ended || this.runState.paused) return;
+      if (!this.player.launched) return;
+
+      if (e.key === "u") {
         const choices = rollUpgradeChoices(
           this.runState.rng,
           this.runState.appliedUpgrades,
@@ -119,6 +126,10 @@ export class RunScene implements IScene {
           this.runState.paused = true;
           this.showUpgradePick(choices);
         }
+      } else if (e.key === "e") {
+        this.tryEvolve();
+      } else if (e.key === "p") {
+        this.spawner.spawnShooterNear(this.player, this.drones);
       }
     };
     window.addEventListener("keydown", onDbgKey);
@@ -160,9 +171,12 @@ export class RunScene implements IScene {
     this.ended = false;
     this.drones = [];
     this.projectiles = [];
+    this.enemyBullets = [];
     this.spawner.reset();
     this.weapon.reset();
+    this.droneAI.reset();
     this.upgradeOverlay.hide();
+    this.shakeT = 0;
 
     const params = new URLSearchParams(window.location.search);
     const seedParam = params.get("seed");
@@ -192,8 +206,8 @@ export class RunScene implements IScene {
 
   fixedUpdate(dt: number): void {
     if (this.ended) return;
-    // INVARIANT: all timers (stall, dragDebuff, weapon cooldowns, spawner)
-    // advance below this gate. Keep it that way — never tick timers in update().
+    // INVARIANT: all timers (stall, dragDebuff, weapon cooldowns, spawner,
+    // shooter cooldowns, enemy bullet lifetimes) advance below this gate.
     if (this.runState.paused) return;
 
     if (this.freshReset) {
@@ -229,7 +243,7 @@ export class RunScene implements IScene {
       distanceM,
       dt
     );
-    this.droneAI.step(this.player, this.drones, dt);
+    this.droneAI.step(this.player, this.drones, this.enemyBullets, dt);
 
     this.weapon.step(
       this.player,
@@ -238,7 +252,14 @@ export class RunScene implements IScene {
       this.runState,
       dt
     );
-    this.collide.step(this.player, this.drones, this.projectiles, ps, dt);
+    this.collide.step(
+      this.player,
+      this.drones,
+      this.projectiles,
+      this.enemyBullets,
+      ps,
+      dt
+    );
 
     const choices = this.upgradeSys.checkMilestone(
       distanceM,
@@ -255,7 +276,9 @@ export class RunScene implements IScene {
     }
   }
 
-  private showUpgradePick(choices: import("../../content/upgrades/upgradeTypes").UpgradeChoice[]) {
+  private showUpgradePick(
+    choices: import("../../content/upgrades/upgradeTypes").UpgradeChoice[]
+  ) {
     const app = this.scenes.getApp();
     this.upgradeOverlay.show(
       choices,
@@ -271,8 +294,20 @@ export class RunScene implements IScene {
         if (hpGain > 0) this.player.hp += hpGain;
         const boostGain = this.runState.playerStats.boostMax - oldBoostMax;
         if (boostGain > 0) this.player.boost += boostGain;
+
+        this.tryEvolve();
       }
     );
+  }
+
+  private tryEvolve() {
+    const result = this.evolutionSys.check(this.runState);
+    if (result) {
+      const evo = result.def;
+      this.toast.show(`EVOLVED: ${evo.sourceWeaponId} → ${evo.name}`);
+      this.shakeT = 0.3;
+      this.shakeIntensity = 8;
+    }
   }
 
   update(dt: number): void {
@@ -283,6 +318,14 @@ export class RunScene implements IScene {
     this.cam.follow(camX, camY);
     this.cam.update(dt);
 
+    if (this.shakeT > 0) {
+      this.shakeT -= dt;
+      const amt = this.shakeIntensity * Math.min(1, this.shakeT * 4);
+      this.layers.world.x += (Math.random() - 0.5) * amt;
+      this.layers.world.y += (Math.random() - 0.5) * amt;
+    }
+
+    this.toast.update(dt);
     this.drawWorld(app.renderer.width, app.renderer.height);
 
     const ps = this.runState.playerStats;
@@ -323,8 +366,12 @@ export class RunScene implements IScene {
       .map(([id, n]) => `  ${id} x${n}`)
       .join("\n");
 
+    const evos = [...this.runState.appliedEvolutions]
+      .map((id) => `  ${id}`)
+      .join("\n");
+
     this.end.setText(
-      `RUN OVER\n\nDistance: ${distanceM.toFixed(0)}m\nKills: ${this.player.kills}\nHits: ${this.player.hits}\nSpeed: ${speed.toFixed(1)}\n\nScore: ${score.toFixed(0)}${upgrades ? `\n\nUpgrades:\n${upgrades}` : ""}\n\nClick to Restart`
+      `RUN OVER\n\nDistance: ${distanceM.toFixed(0)}m\nKills: ${this.player.kills}\nHits: ${this.player.hits}\nSpeed: ${speed.toFixed(1)}\n\nScore: ${score.toFixed(0)}${upgrades ? `\n\nUpgrades:\n${upgrades}` : ""}${evos ? `\n\nEvolutions:\n${evos}` : ""}\n\nClick to Restart`
     );
 
     const app = this.scenes.getApp();
@@ -403,9 +450,17 @@ export class RunScene implements IScene {
 
     this.drawThrustFlame();
 
+    // Drones
     for (const d of this.drones) {
       if (!d.alive) continue;
-      const color = d.elite ? 0xff3366 : 0xff66cc;
+      let color: number;
+      if (d.droneType === "shooter") {
+        color = 0xffaa33;
+      } else if (d.elite) {
+        color = 0xff3366;
+      } else {
+        color = 0xff66cc;
+      }
       this.gfxWorld
         .circle(d.pos.x, d.pos.y, d.radius)
         .fill({ color, alpha: 0.9 });
@@ -414,15 +469,39 @@ export class RunScene implements IScene {
           .circle(d.pos.x, d.pos.y, d.radius + 3)
           .stroke({ width: 2, color: 0xff0044, alpha: 0.6 });
       }
+      if (d.droneType === "shooter") {
+        this.gfxWorld
+          .circle(d.pos.x, d.pos.y, d.radius + 2)
+          .stroke({ width: 1.5, color: 0xff8800, alpha: 0.5 });
+      }
     }
 
+    // Enemy bullets
+    for (const eb of this.enemyBullets) {
+      if (!eb.alive) continue;
+      this.gfxWorld
+        .circle(eb.pos.x, eb.pos.y, eb.radius)
+        .fill({ color: 0xff4422, alpha: 0.85 });
+    }
+
+    // Player projectiles
     for (const p of this.projectiles) {
       if (!p.alive) continue;
-      this.gfxWorld
-        .circle(p.pos.x, p.pos.y, p.radius)
-        .fill({ color: 0xffffff, alpha: 0.9 });
+      if (p.piercing) {
+        this.gfxWorld
+          .circle(p.pos.x, p.pos.y, p.radius + 3)
+          .fill({ color: 0x44ffff, alpha: 0.2 });
+        this.gfxWorld
+          .circle(p.pos.x, p.pos.y, p.radius)
+          .fill({ color: 0x44ffff, alpha: 0.9 });
+      } else {
+        this.gfxWorld
+          .circle(p.pos.x, p.pos.y, p.radius)
+          .fill({ color: 0xffffff, alpha: 0.9 });
+      }
     }
 
+    // Aim line
     const st = this.drag.state;
     if (!this.player.launched && st.isDragging) {
       const camOffsetX = -this.layers.world.x;

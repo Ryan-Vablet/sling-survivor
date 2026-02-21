@@ -13,6 +13,8 @@ export type Player = {
   hits: number;
 };
 
+export type DroneType = "chaser" | "shooter";
+
 export type Drone = {
   id: number;
   pos: Vec2;
@@ -21,6 +23,8 @@ export type Drone = {
   hp: number;
   alive: boolean;
   elite: boolean;
+  droneType: DroneType;
+  shootTimer: number;
 };
 
 export type Projectile = {
@@ -29,6 +33,21 @@ export type Projectile = {
   vel: Vec2;
   radius: number;
   damage: number;
+  alive: boolean;
+  lifeT: number;
+  piercing: boolean;
+  pierceLeft: number;
+  hitIds: number[];
+};
+
+export type EnemyBullet = {
+  id: number;
+  pos: Vec2;
+  vel: Vec2;
+  radius: number;
+  damage: number;
+  speedRetain: number;
+  dragDebuff: number;
   alive: boolean;
   lifeT: number;
 };

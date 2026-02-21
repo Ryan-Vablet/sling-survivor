@@ -94,8 +94,7 @@ export class WeaponSystem {
     const spread = 0.12;
 
     for (let i = 0; i < total; i++) {
-      const offset =
-        total === 1 ? 0 : (i - (total - 1) / 2) * spread;
+      const offset = total === 1 ? 0 : (i - (total - 1) / 2) * spread;
       const angle = baseAngle + offset;
       const shotDir = { x: Math.cos(angle), y: Math.sin(angle) };
 
@@ -103,10 +102,13 @@ export class WeaponSystem {
         id: this.nextId++,
         pos: { x: player.pos.x, y: player.pos.y },
         vel: v2.mul(shotDir, ws.projectileSpeed),
-        radius: 4,
+        radius: ws.pierceCount > 0 ? 5 : 4,
         damage: ws.damage,
         alive: true,
         lifeT: ws.projectileLifeT,
+        piercing: ws.pierceCount > 0,
+        pierceLeft: ws.pierceCount,
+        hitIds: [],
       });
     }
 

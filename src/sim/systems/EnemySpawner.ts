@@ -27,7 +27,8 @@ export class EnemySpawner {
 
     const maxAlive = Math.min(
       TUNING.ramp.maxAliveCap,
-      TUNING.enemy.maxAlive + Math.floor(distanceM * TUNING.ramp.maxAliveGrowth)
+      TUNING.enemy.maxAlive +
+        Math.floor(distanceM * TUNING.ramp.maxAliveGrowth)
     );
     if (alive >= maxAlive) return;
 
@@ -40,7 +41,12 @@ export class EnemySpawner {
       this.t = 0;
       this.spawnCount++;
 
+      const isShooter =
+        distanceM >= TUNING.shooter.minDistanceM &&
+        rng.nextFloat() < TUNING.shooter.spawnRatio;
+
       const isElite =
+        !isShooter &&
         this.spawnCount > 0 &&
         this.spawnCount % TUNING.elite.spawnEveryN === 0;
 
@@ -51,11 +57,35 @@ export class EnemySpawner {
         id: this.nextId++,
         pos: { x: spawnX, y: spawnY },
         vel: { x: 0, y: 0 },
-        radius: isElite ? TUNING.elite.radius : 14,
-        hp: isElite ? TUNING.elite.hp : 20,
+        radius: isShooter
+          ? TUNING.shooter.radius
+          : isElite
+            ? TUNING.elite.radius
+            : 14,
+        hp: isShooter
+          ? TUNING.shooter.hp
+          : isElite
+            ? TUNING.elite.hp
+            : 20,
         alive: true,
         elite: isElite,
+        droneType: isShooter ? "shooter" : "chaser",
+        shootTimer: isShooter ? TUNING.shooter.fireCooldown : 0,
       });
     }
+  }
+
+  spawnShooterNear(player: Player, drones: Drone[]) {
+    drones.push({
+      id: this.nextId++,
+      pos: { x: player.pos.x + 400, y: player.pos.y - 150 },
+      vel: { x: 0, y: 0 },
+      radius: TUNING.shooter.radius,
+      hp: TUNING.shooter.hp,
+      alive: true,
+      elite: false,
+      droneType: "shooter",
+      shootTimer: TUNING.shooter.fireCooldown,
+    });
   }
 }
