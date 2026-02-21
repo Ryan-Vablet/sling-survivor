@@ -11,7 +11,7 @@ export class DroneAI {
 
       const to = v2.sub(player.pos, d.pos);
       const dir = v2.norm(to);
-      const spd = TUNING.enemy.droneSpeed;
+      const spd = d.elite ? TUNING.elite.speed : TUNING.enemy.droneSpeed;
 
       d.vel.x = dir.x * spd;
       d.vel.y = dir.y * spd;

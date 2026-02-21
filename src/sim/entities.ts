@@ -20,6 +20,7 @@ export type Drone = {
   radius: number;
   hp: number;
   alive: boolean;
+  elite: boolean;
 };
 
 export type Projectile = {
