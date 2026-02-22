@@ -27,6 +27,7 @@ import { UpgradeOverlay } from "../../ui/UpgradeOverlay";
 import { Toast } from "../../ui/Toast";
 import { isTop10, submitScore } from "../../api/leaderboard";
 import { showInitialsPrompt } from "../../ui/LeaderboardOverlay";
+import type { RunSummaryData } from "../types/runSummary";
 
 const COIN_FRAMES = 8;
 
@@ -101,6 +102,7 @@ export class RunScene implements IScene {
   private shakeT = 0;
   private shakeIntensity = 0;
   private lastDistanceM = 0;
+  private maxDistanceM = 0;
   private coinAnimT = 0;
   private smokeTrail: TrailPoint[] = [];
   private lastTrailTime = 0;
@@ -357,6 +359,7 @@ export class RunScene implements IScene {
     this.upgradeOverlay.hide();
     this.shakeT = 0;
     this.lastDistanceM = 0;
+    this.maxDistanceM = 0;
 
     const params = new URLSearchParams(window.location.search);
     const seedParam = params.get("seed");
@@ -400,6 +403,7 @@ export class RunScene implements IScene {
     this.upgradeOverlay.hide();
     this.shakeT = 0;
     this.lastDistanceM = 0;
+    this.maxDistanceM = 0;
 
     if (this.drag) {
       this.drag.state.isDragging = false;
@@ -460,6 +464,7 @@ export class RunScene implements IScene {
       this.runState.currentXp += distDeltaM * (TUNING.xp.perKm / 1000);
     }
     this.lastDistanceM = distanceM;
+    if (distanceM > this.maxDistanceM) this.maxDistanceM = distanceM;
 
     this.tierSys.update(distanceM);
     if (this.tierSys.tierJustChanged) {
@@ -702,44 +707,48 @@ export class RunScene implements IScene {
           this.drainPendingUpgrades(() => this.resetRocket())
         );
       } else {
-        const upgrades = [...this.runState.appliedUpgrades.entries()]
-          .map(([id, n]) => `  ${id} x${n}`)
-          .join("\n");
-        const evos = [...this.runState.appliedEvolutions]
-          .map((id) => `  ${id}`)
-          .join("\n");
-        const arts = [...this.runState.appliedArtifacts]
-          .map((id) => `  ${id}`)
-          .join("\n");
-
+        const summaryData: RunSummaryData = {
+          initials: "???",
+          distanceM: this.maxDistanceM,
+          scrap: this.runState.scrap,
+          gold: this.runState.gold,
+          round: this.runState.currentRound,
+          totalKills: this.runState.totalKills,
+          level: this.runState.currentLevel,
+          upgrades: [...this.runState.appliedUpgrades.entries()],
+          evolutions: [...this.runState.appliedEvolutions],
+          artifacts: [...this.runState.appliedArtifacts],
+        };
+        this.scenes.data.summaryData = summaryData;
         this.end.setText(
-          `GAME OVER\n\n` +
-            `Round: ${this.runState.currentRound}\n` +
-            `Total Kills: ${this.runState.totalKills}\n` +
-            `Level: ${this.runState.currentLevel}\n` +
-            `Gold: ${this.runState.gold}` +
-            `${upgrades ? `\n\nUpgrades:\n${upgrades}` : ""}` +
-            `${evos ? `\n\nEvolutions:\n${evos}` : ""}` +
-            `${arts ? `\n\nArtifacts:\n${arts}` : ""}\n\n` +
-            `Click to continue`
+          `GAME OVER\n\nDistance: ${Math.round(this.maxDistanceM)} m\n\nClick to continue`
         );
-        const finalScore = Math.round(distanceM);
         this.showEndScreenOverlay(() =>
-          this.trySubmitScoreAndThen(finalScore, () => this.scenes.switchTo("title"))
+          this.trySubmitScoreAndThen(summaryData, () => this.scenes.switchTo("summary"))
         );
       }
     }
   }
 
-  private trySubmitScoreAndThen(score: number, onDone: () => void) {
-    isTop10(score).then((top10) => {
+  private trySubmitScoreAndThen(summaryData: RunSummaryData, onDone: () => void) {
+    const distance = Math.round(summaryData.distanceM);
+    isTop10(distance).then((top10) => {
       if (!top10) {
         onDone();
         return;
       }
-      showInitialsPrompt(score, (initials) => {
-        submitScore(initials, score).then(() => onDone());
-      });
+      showInitialsPrompt(
+        { distance: summaryData.distanceM, scrap: summaryData.scrap, gold: summaryData.gold },
+        (initials) => {
+          summaryData.initials = initials;
+          submitScore(initials, {
+            distance: Math.round(summaryData.distanceM),
+            scrap: summaryData.scrap,
+            gold: summaryData.gold,
+            summary: summaryData,
+          }).then(() => onDone());
+        }
+      );
     });
   }
 

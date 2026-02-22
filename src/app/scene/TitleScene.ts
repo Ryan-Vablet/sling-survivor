@@ -64,7 +64,12 @@ export class TitleScene implements IScene {
     this.root.addChild(leaderboardBtn);
     leaderboardBtn.eventMode = "static";
     leaderboardBtn.cursor = "pointer";
-    leaderboardBtn.on("pointerdown", () => this.leaderboardOverlay.show());
+    leaderboardBtn.on("pointerdown", () => {
+      this.leaderboardOverlay.show((summary) => {
+        this.scenes.data.summaryData = summary;
+        this.scenes.switchTo("summary");
+      });
+    });
     leaderboardBtn.on("pointerover", () => leaderboardBtn.scale.set(1.04));
     leaderboardBtn.on("pointerout", () => leaderboardBtn.scale.set(1));
 

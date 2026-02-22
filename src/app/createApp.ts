@@ -3,6 +3,7 @@ import { SceneManager } from "./scene/SceneManager";
 import { TitleScene } from "./scene/TitleScene";
 import { RunScene } from "./scene/RunScene";
 import { MerchantScene } from "./scene/MerchantScene";
+import { SummaryScene } from "./scene/SummaryScene";
 import { Debug } from "../core/debug/Debug";
 
 export async function createApp(root: HTMLElement) {
@@ -20,6 +21,7 @@ export async function createApp(root: HTMLElement) {
   scenes.register("title", () => new TitleScene(scenes));
   scenes.register("run", () => new RunScene(scenes));
   scenes.register("merchant", () => new MerchantScene(scenes));
+  scenes.register("summary", () => new SummaryScene(scenes));
   scenes.start("title");
 
   // Simple global debug toggle

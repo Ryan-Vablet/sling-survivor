@@ -1,13 +1,17 @@
-import { getLeaderboard } from "../api/leaderboard";
+import { getLeaderboard, getSummaryFromEntry, type LeaderboardEntry } from "../api/leaderboard";
+import type { RunSummaryData } from "../app/types/runSummary";
 
 /**
  * DOM overlay: arcade-style leaderboard (green/amber on dark).
- * Shown from title (Leaderboards button) or after submitting initials.
+ * Shows Distance, Scrap, Gold; "View summary" opens Summary scene with that run's data.
  */
 export class LeaderboardOverlay {
   private el: HTMLElement | null = null;
+  private entries: LeaderboardEntry[] = [];
+  private onViewSummary: ((summary: RunSummaryData) => void) | null = null;
 
-  show() {
+  show(onViewSummary?: (summary: RunSummaryData) => void) {
+    this.onViewSummary = onViewSummary ?? null;
     if (!this.el) {
       this.el = document.createElement("div");
       this.el.className = "leaderboard-overlay";
@@ -30,15 +34,52 @@ export class LeaderboardOverlay {
     if (!this.el) return;
     const listEl = this.el.querySelector(".leaderboard-list");
     if (!listEl) return;
-    const entries = await getLeaderboard();
-    listEl.innerHTML = entries.length
-      ? entries
-          .map(
-            (e, i) =>
-              `<div class="leaderboard-row"><span class="rank">${i + 1}</span><span class="initials">${e.initials}</span><span class="score">${e.score}</span></div>`
-          )
-          .join("")
-      : `<div class="leaderboard-empty">No scores yet. Play to get on the board!</div>`;
+    this.entries = await getLeaderboard();
+    if (this.entries.length === 0) {
+      listEl.innerHTML = `<div class="leaderboard-empty">No scores yet. Play to get on the board!</div>`;
+      return;
+    }
+    listEl.innerHTML = this.entries
+      .map(
+        (e, i) =>
+          `<div class="leaderboard-row" data-index="${i}">
+            <span class="rank">${i + 1}</span>
+            <span class="initials">${e.initials}</span>
+            <span class="stat">${Math.round(e.distance)} m</span>
+            <span class="stat">${e.scrap}</span>
+            <span class="stat">${e.gold}</span>
+            <button type="button" class="leaderboard-view-btn" data-index="${i}">View</button>
+          </div>`
+      )
+      .join("");
+
+    listEl.querySelectorAll(".leaderboard-view-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const idx = parseInt((e.currentTarget as HTMLElement).dataset.index ?? "-1", 10);
+        if (idx < 0 || !this.onViewSummary) return;
+        const entry = this.entries[idx];
+        const summary = getSummaryFromEntry(entry);
+        if (summary) {
+          this.hide();
+          this.onViewSummary(summary);
+        } else {
+          this.onViewSummary({
+            initials: entry.initials,
+            distanceM: entry.distance,
+            scrap: entry.scrap,
+            gold: entry.gold,
+            round: 0,
+            totalKills: 0,
+            level: 0,
+            upgrades: [],
+            evolutions: [],
+            artifacts: [],
+          });
+          this.hide();
+        }
+      });
+    });
   }
 
   private markup(): string {
@@ -75,8 +116,10 @@ export class LeaderboardOverlay {
     text-shadow: 0 0 10px rgba(255,204,0,0.5);
   }
   .leaderboard-head {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 32px 1fr 72px 56px 56px 56px;
+    gap: 8px;
+    align-items: center;
     color: #6a8a6a;
     font-size: 12px;
     letter-spacing: 2px;
@@ -85,19 +128,31 @@ export class LeaderboardOverlay {
   }
   .leaderboard-list { min-height: 200px; }
   .leaderboard-row {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 32px 1fr 72px 56px 56px 56px;
+    gap: 8px;
     align-items: center;
     padding: 8px 12px;
     margin-bottom: 4px;
     background: rgba(0,40,0,0.3);
     border-radius: 4px;
     color: #aaffaa;
-    font-size: 18px;
+    font-size: 16px;
   }
-  .leaderboard-row .rank { color: #ffcc00; width: 32px; }
-  .leaderboard-row .initials { letter-spacing: 3px; flex: 1; text-align: center; }
-  .leaderboard-row .score { color: #00ff88; min-width: 72px; text-align: right; }
+  .leaderboard-row .rank { color: #ffcc00; }
+  .leaderboard-row .initials { letter-spacing: 3px; text-align: center; }
+  .leaderboard-row .stat { color: #00ff88; text-align: right; }
+  .leaderboard-view-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    background: #2a4a2a;
+    color: #aaffaa;
+    border: 1px solid #3a6a3a;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .leaderboard-view-btn:hover { background: #3a5a3a; }
   .leaderboard-empty {
     color: #668866;
     text-align: center;
@@ -120,7 +175,7 @@ export class LeaderboardOverlay {
 <div class="leaderboard-overlay-backdrop" aria-label="Close"></div>
 <div class="leaderboard-panel">
   <div class="leaderboard-title">★ HIGH SCORES ★</div>
-  <div class="leaderboard-head"><span>RANK</span><span>INITIALS</span><span>SCORE</span></div>
+  <div class="leaderboard-head"><span>#</span><span>INITIALS</span><span>DIST</span><span>SCRAP</span><span>GOLD</span><span></span></div>
   <div class="leaderboard-list">Loading…</div>
   <button type="button" class="leaderboard-overlay-close">Close</button>
 </div>
@@ -128,15 +183,18 @@ export class LeaderboardOverlay {
   }
 }
 
-/** One-off DOM modal: ask for initials (3 chars), then call onSubmit(initials). */
-export function showInitialsPrompt(score: number, onSubmit: (initials: string) => void): void {
+/** One-off DOM modal: show run stats, ask for initials (3 chars), then call onSubmit(initials). */
+export function showInitialsPrompt(
+  stats: { distance: number; scrap: number; gold: number },
+  onSubmit: (initials: string) => void
+): void {
   const wrap = document.createElement("div");
   wrap.className = "initials-prompt-overlay";
   wrap.style.cssText = "position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);font-family:system-ui,sans-serif;";
   wrap.innerHTML = `
     <div style="background:#12122a;border:2px solid #4488aa;border-radius:12px;padding:28px;text-align:center;max-width:320px;">
       <p style="color:#fff;margin:0 0 8px 0;font-size:18px;">You made the top 10!</p>
-      <p style="color:#88aacc;margin:0 0 16px 0;font-size:14px;">Score: ${score} m</p>
+      <p style="color:#88aacc;margin:0 0 16px 0;font-size:14px;">Distance: ${Math.round(stats.distance)} m · Scrap: ${stats.scrap} · Gold: ${stats.gold}</p>
       <label style="display:block;color:#aaccdd;font-size:13px;margin-bottom:6px;">Enter your initials (3 letters)</label>
       <input type="text" maxlength="3" placeholder="ABC" style="width:120px;padding:10px;font-size:20px;letter-spacing:6px;text-align:center;border-radius:8px;border:2px solid #4488aa;background:#0a0a1a;color:#fff;">
       <div style="margin-top:16px;">
