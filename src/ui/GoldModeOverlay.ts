@@ -29,8 +29,6 @@ export function setGoldMode(on: boolean): void {
   if (on) showActivatedMessage();
 }
 
-const SEGMENT_DELAYS = [0, 0.35, 0.7, 1.05, 1.4, 1.75, 2.1, 2.45]; // one bulges every ~0.35s
-
 function ensureOverlay(): void {
   if (overlayEl) return;
   overlayEl = document.createElement("div");
@@ -42,8 +40,8 @@ function ensureOverlay(): void {
     pointer-events: none;
     z-index: 9999;
     display: none;
-    border: 3px solid rgba(212, 175, 55, 0.6);
-    border-radius: 6px;
+    border: 6px solid rgba(212, 175, 55, 0.6);
+    border-radius: 24px;
     box-sizing: border-box;
   `;
   if (!document.getElementById("gold-mode-pulse-style")) {
@@ -52,64 +50,32 @@ function ensureOverlay(): void {
     style.textContent = `
       .gold-mode-segment {
         position: absolute;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
         background: transparent;
-        animation: gold-segment-bulge-top 2.8s ease-in-out infinite;
+        animation: gold-segment-bulge 2.8s ease-in-out infinite;
       }
-      .gold-mode-segment.top { left: 35%; top: -1px; width: 30%; height: 14px; box-shadow: 0 -2px 0 0 rgba(212,175,55,0.55), 0 0 14px rgba(212,175,55,0.22); }
-      .gold-mode-segment.top-right { right: -1px; top: -1px; width: 14px; height: 14px; box-shadow: 2px -2px 0 0 rgba(212,175,55,0.55), 0 0 14px rgba(212,175,55,0.22); border-radius: 0 6px 0 0; }
-      .gold-mode-segment.right { right: -1px; top: 35%; width: 14px; height: 30%; box-shadow: 2px 0 0 0 rgba(212,175,55,0.55), 0 0 14px rgba(212,175,55,0.22); }
-      .gold-mode-segment.bottom-right { right: -1px; bottom: -1px; width: 14px; height: 14px; box-shadow: 2px 2px 0 0 rgba(212,175,55,0.55), 0 0 14px rgba(212,175,55,0.22); border-radius: 0 0 6px 0; }
-      .gold-mode-segment.bottom { left: 35%; bottom: -1px; width: 30%; height: 14px; box-shadow: 0 2px 0 0 rgba(212,175,55,0.55), 0 0 14px rgba(212,175,55,0.22); }
-      .gold-mode-segment.bottom-left { left: -1px; bottom: -1px; width: 14px; height: 14px; box-shadow: -2px 2px 0 0 rgba(212,175,55,0.55), 0 0 14px rgba(212,175,55,0.22); border-radius: 0 0 0 6px; }
-      .gold-mode-segment.left { left: -1px; top: 35%; width: 14px; height: 30%; box-shadow: -2px 0 0 0 rgba(212,175,55,0.55), 0 0 14px rgba(212,175,55,0.22); }
-      .gold-mode-segment.top-left { left: -1px; top: -1px; width: 14px; height: 14px; box-shadow: -2px -2px 0 0 rgba(212,175,55,0.55), 0 0 14px rgba(212,175,55,0.22); border-radius: 6px 0 0 0; }
-      .gold-mode-segment.top { animation-name: gold-segment-bulge-top; }
-      .gold-mode-segment.top-right { animation-name: gold-segment-bulge-tr; }
-      .gold-mode-segment.right { animation-name: gold-segment-bulge-right; }
-      .gold-mode-segment.bottom-right { animation-name: gold-segment-bulge-br; }
-      .gold-mode-segment.bottom { animation-name: gold-segment-bulge-bottom; }
-      .gold-mode-segment.bottom-left { animation-name: gold-segment-bulge-bl; }
-      .gold-mode-segment.left { animation-name: gold-segment-bulge-left; }
-      .gold-mode-segment.top-left { animation-name: gold-segment-bulge-tl; }
-      @keyframes gold-segment-bulge-top {
-        0%, 100% { box-shadow: 0 -2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-        15% { box-shadow: 0 -3px 0 0 rgba(255,215,0,0.9), 0 0 28px 4px rgba(212,175,55,0.5), 0 0 50px rgba(212,175,55,0.25); opacity: 1; }
-        30%, 100% { box-shadow: 0 -2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-      }
-      @keyframes gold-segment-bulge-tr {
-        0%, 100% { box-shadow: 2px -2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-        15% { box-shadow: 3px -3px 0 0 rgba(255,215,0,0.9), 0 0 28px 4px rgba(212,175,55,0.5), 0 0 50px rgba(212,175,55,0.25); opacity: 1; }
-        30%, 100% { box-shadow: 2px -2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-      }
-      @keyframes gold-segment-bulge-right {
-        0%, 100% { box-shadow: 2px 0 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-        15% { box-shadow: 3px 0 0 0 rgba(255,215,0,0.9), 0 0 28px 4px rgba(212,175,55,0.5), 0 0 50px rgba(212,175,55,0.25); opacity: 1; }
-        30%, 100% { box-shadow: 2px 0 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-      }
-      @keyframes gold-segment-bulge-br {
-        0%, 100% { box-shadow: 2px 2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-        15% { box-shadow: 3px 3px 0 0 rgba(255,215,0,0.9), 0 0 28px 4px rgba(212,175,55,0.5), 0 0 50px rgba(212,175,55,0.25); opacity: 1; }
-        30%, 100% { box-shadow: 2px 2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-      }
-      @keyframes gold-segment-bulge-bottom {
-        0%, 100% { box-shadow: 0 2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-        15% { box-shadow: 0 3px 0 0 rgba(255,215,0,0.9), 0 0 28px 4px rgba(212,175,55,0.5), 0 0 50px rgba(212,175,55,0.25); opacity: 1; }
-        30%, 100% { box-shadow: 0 2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-      }
-      @keyframes gold-segment-bulge-bl {
-        0%, 100% { box-shadow: -2px 2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-        15% { box-shadow: -3px 3px 0 0 rgba(255,215,0,0.9), 0 0 28px 4px rgba(212,175,55,0.5), 0 0 50px rgba(212,175,55,0.25); opacity: 1; }
-        30%, 100% { box-shadow: -2px 2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-      }
-      @keyframes gold-segment-bulge-left {
-        0%, 100% { box-shadow: -2px 0 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-        15% { box-shadow: -3px 0 0 0 rgba(255,215,0,0.9), 0 0 28px 4px rgba(212,175,55,0.5), 0 0 50px rgba(212,175,55,0.25); opacity: 1; }
-        30%, 100% { box-shadow: -2px 0 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-      }
-      @keyframes gold-segment-bulge-tl {
-        0%, 100% { box-shadow: -2px -2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
-        15% { box-shadow: -3px -3px 0 0 rgba(255,215,0,0.9), 0 0 28px 4px rgba(212,175,55,0.5), 0 0 50px rgba(212,175,55,0.25); opacity: 1; }
-        30%, 100% { box-shadow: -2px -2px 0 0 rgba(212,175,55,0.5), 0 0 12px rgba(212,175,55,0.15); opacity: 0.9; }
+      .gold-mode-segment.top { left: 50%; top: 0; transform: translate(-50%, -50%); }
+      .gold-mode-segment.top-right { right: 0; top: 0; transform: translate(50%, -50%); }
+      .gold-mode-segment.right { right: 0; top: 50%; transform: translate(50%, -50%); }
+      .gold-mode-segment.bottom-right { right: 0; bottom: 0; transform: translate(50%, 50%); }
+      .gold-mode-segment.bottom { left: 50%; bottom: 0; transform: translate(-50%, 50%); }
+      .gold-mode-segment.bottom-left { left: 0; bottom: 0; transform: translate(-50%, 50%); }
+      .gold-mode-segment.left { left: 0; top: 50%; transform: translate(-50%, -50%); }
+      .gold-mode-segment.top-left { left: 0; top: 0; transform: translate(-50%, -50%); }
+      .gold-mode-segment.top { animation-delay: 0s; }
+      .gold-mode-segment.top-right { animation-delay: 0.35s; }
+      .gold-mode-segment.right { animation-delay: 0.7s; }
+      .gold-mode-segment.bottom-right { animation-delay: 1.05s; }
+      .gold-mode-segment.bottom { animation-delay: 1.4s; }
+      .gold-mode-segment.bottom-left { animation-delay: 1.75s; }
+      .gold-mode-segment.left { animation-delay: 2.1s; }
+      .gold-mode-segment.top-left { animation-delay: 2.45s; }
+      @keyframes gold-segment-bulge {
+        0%, 100% { box-shadow: 0 0 12px rgba(212,175,55,0.25); opacity: 0.85; }
+        15% { box-shadow: 0 0 25px rgba(212,175,55,0.5), 0 0 45px rgba(212,175,55,0.3); opacity: 1; }
+        30%, 100% { box-shadow: 0 0 12px rgba(212,175,55,0.25); opacity: 0.85; }
       }
       .gold-mode-message {
         position: absolute;
@@ -150,10 +116,9 @@ function ensureOverlay(): void {
     document.head.appendChild(style);
   }
   const segments = ["top", "top-right", "right", "bottom-right", "bottom", "bottom-left", "left", "top-left"];
-  segments.forEach((side, i) => {
+  segments.forEach((side) => {
     const seg = document.createElement("div");
     seg.className = `gold-mode-segment ${side}`;
-    seg.style.animationDelay = `${SEGMENT_DELAYS[i]}s`;
     overlayEl!.appendChild(seg);
   });
   messageEl = document.createElement("div");
