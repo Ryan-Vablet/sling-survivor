@@ -63,9 +63,11 @@ export class Hud {
     xp: number;
     xpMax: number;
     level: number;
+    artifacts: number;
   }) {
+    const artText = data.artifacts > 0 ? `  Art: ${data.artifacts}` : "";
     this.textLeft.text =
-      `Round ${data.round}  Rockets: ${data.rocketsLeft}  Gold: ${data.gold}\n` +
+      `Round ${data.round}  Rockets: ${data.rocketsLeft}  Gold: ${data.gold}${artText}\n` +
       `Scrap: ${data.scrap}/${data.roundToll}  Dist: ${data.distanceM.toFixed(0)}m  Speed: ${data.speed.toFixed(1)}\n` +
       `Kills: ${data.kills}  Hits: ${data.hits}`;
 

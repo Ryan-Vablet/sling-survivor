@@ -47,6 +47,7 @@ export class RunState {
 
   appliedUpgrades: Map<string, number> = new Map();
   appliedEvolutions: Set<string> = new Set();
+  appliedArtifacts: Set<string> = new Set();
   weaponLoadout: string[] = ["auto_cannon"];
 
   playerStats!: DerivedPlayerStats;
@@ -90,6 +91,13 @@ export class RunState {
   recomputeStats() {
     this.playerStats = this.computePlayerStats();
     this.weaponStats = this.computeWeaponStats();
+    this.applyArtifactBonuses();
+  }
+
+  private applyArtifactBonuses() {
+    if (this.appliedArtifacts.has("emergency_fuel")) {
+      this.playerStats.boostMax += 50;
+    }
   }
 
   private computePlayerStats(): DerivedPlayerStats {

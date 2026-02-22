@@ -67,6 +67,11 @@ export const TUNING = {
     pickupRadius: 32,
     coinSize: 24,
   },
+  merchant: {
+    upgradePriceCommon: 40,
+    upgradePriceRare: 60,
+    upgradePriceEpic: 80,
+  },
   elite: {
     spawnEveryN: 5,
     hp: 60,

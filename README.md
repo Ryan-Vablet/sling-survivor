@@ -53,7 +53,7 @@ Each **run** consists of multiple **rounds**. Each round gives the player a limi
 | Rocket | One slingshot launch. Earn XP + scrap + gold during flight. |
 | XP | Gained from distance + kills. Triggers upgrade picks on level-up. |
 | Scrap | Gained from kills (10/kill). Pays round tolls. Resets on round clear. |
-| Gold | Earned from excess scrap + world coin pickups. Banked for future merchants. |
+| Gold | Earned from excess scrap + world coin pickups. Spent at the Merchant. |
 | Round Toll | Pay scrap to advance to the next round. Rockets reset. |
 | Game Over | Rockets reach 0 before toll is paid. |
 
@@ -67,7 +67,27 @@ XP is earned primarily from kills (25 XP / kill) with a small background trickle
 
 Kills grant scrap (10 / kill). Scrap accumulates across rockets and pays the round toll. On round clear, excess scrap converts to gold at 50%, plus a bonus of 15 gold per remaining rocket. Scrap resets to 0. Toll scales 1.7x per round.
 
-Gold is also earned by flying through world coin pickups (5 gold each). Gold persists across rounds and is reserved for future merchants/shops.
+Gold is also earned by flying through world coin pickups (5 gold each). Gold persists across rounds and is spent at the **Merchant** after each round clear.
+
+### Merchant
+
+After clearing a round, the Merchant scene appears. The player can spend gold on:
+
+- **4 upgrade cards** (from the existing upgrade pool, priced 40–80 gold by rarity)
+- **2 artifact cards** (unique per-run items, priced 120–160 gold)
+
+Purchased artifacts are removed from the pool for future visits. Click **CONTINUE** to return to the game.
+
+### Artifacts
+
+| Artifact | Cost | Effect |
+|----------|------|--------|
+| Extra Rocket | 150 | +1 rocket per round |
+| Scrap Magnet | 120 | +25% scrap per kill |
+| Golden Thrusters | 140 | +20% gold from world coins |
+| Emergency Fuel | 160 | +50 max boost capacity |
+
+Artifacts are merchant-only, cannot stack, and persist for the entire run.
 
 ### Available Upgrades
 
@@ -131,8 +151,8 @@ src/
   core/           ← engine: input, RNG, math, debug
   sim/            ← runtime: entities, physics, systems, RunState
   ui/             ← Pixi UI: HUD, end screen, upgrade overlay
-  app/            ← boot, scenes (Title, Run)
+  app/            ← boot, scenes (Title, Run, Merchant)
   render/         ← camera, layers, asset loading
 ```
 
-Upgrades are data-driven: definitions in `src/content/upgrades/`, runtime effects computed in `RunState`, applied by `UpgradeSystem`. Evolutions are data-driven: definitions in `src/content/evolutions/`, checked by `EvolutionSystem` after each upgrade apply. Baseline stats come from `TUNING`; derived stats are recomputed on each upgrade/evolution application. The game loop (rounds, rockets, XP, coins, toll) is managed by `RunState` and orchestrated by `RunScene`.
+Upgrades are data-driven: definitions in `src/content/upgrades/`, runtime effects computed in `RunState`, applied by `UpgradeSystem`. Evolutions are data-driven: definitions in `src/content/evolutions/`, checked by `EvolutionSystem` after each upgrade apply. Artifacts are data-driven: definitions in `src/content/artifacts/`, applied via `MerchantScene` and stored in `RunState.appliedArtifacts`. Baseline stats come from `TUNING`; derived stats are recomputed on each upgrade/evolution/artifact application. The game loop (rounds, rockets, XP, scrap, gold, toll, merchant) is managed by `RunState` and orchestrated by `RunScene` and `MerchantScene`.

@@ -111,7 +111,15 @@ export class RunScene implements IScene {
     await loadAssets();
     await this.loadCoinFrames();
     this.initStars();
-    this.resetRun();
+
+    const returningState = this.scenes.data.runState as RunState | undefined;
+    if (returningState) {
+      this.scenes.data.runState = undefined;
+      this.runState = returningState;
+      this.resetRocket();
+    } else {
+      this.resetRun();
+    }
 
     this.resizeHandler = () => {
       const w = app.renderer.width;
@@ -256,7 +264,11 @@ export class RunScene implements IScene {
       const dy = c.pos.y - py;
       if (dx * dx + dy * dy <= pr * pr) {
         c.alive = false;
-        this.runState.gold += TUNING.worldCoins.goldPerPickup;
+        let goldGain: number = TUNING.worldCoins.goldPerPickup;
+        if (this.runState.appliedArtifacts.has("golden_thrusters")) {
+          goldGain = Math.round(goldGain * 1.2);
+        }
+        this.runState.gold += goldGain;
         const sprite = this.coinSprites.get(c.id);
         if (sprite) {
           this.coinContainer.removeChild(sprite);
@@ -421,7 +433,11 @@ export class RunScene implements IScene {
     );
     const killsDelta = this.player.kills - killsBefore;
     if (killsDelta > 0) {
-      this.runState.scrap += killsDelta * TUNING.scrap.perKill;
+      let scrapGain = killsDelta * TUNING.scrap.perKill;
+      if (this.runState.appliedArtifacts.has("scrap_magnet")) {
+        scrapGain = Math.round(scrapGain * 1.25);
+      }
+      this.runState.scrap += scrapGain;
       this.runState.currentXp += killsDelta * TUNING.xp.perKill;
       this.runState.totalKills += killsDelta;
     }
@@ -533,6 +549,7 @@ export class RunScene implements IScene {
       xp: this.runState.currentXp,
       xpMax: this.runState.xpToNextLevel,
       level: this.runState.currentLevel,
+      artifacts: this.runState.appliedArtifacts.size,
     });
 
     
@@ -558,7 +575,9 @@ export class RunScene implements IScene {
 
       this.runState.scrap = 0;
       this.runState.currentRound++;
-      this.runState.rocketsRemaining = TUNING.rounds.startingRockets;
+      let rockets = TUNING.rounds.startingRockets;
+      if (this.runState.appliedArtifacts.has("extra_rocket")) rockets++;
+      this.runState.rocketsRemaining = rockets;
       this.runState.roundToll = Math.round(
         tollPaid * TUNING.rounds.tollScale
       );
@@ -580,7 +599,10 @@ export class RunScene implements IScene {
           `Click to continue`
       );
       this.showEndScreenOverlay(() =>
-        this.drainPendingUpgrades(() => this.resetRocket())
+        this.drainPendingUpgrades(() => {
+          this.scenes.data.runState = this.runState;
+          this.scenes.switchTo("merchant");
+        })
       );
     } else {
       this.runState.rocketsRemaining--;
@@ -610,6 +632,9 @@ export class RunScene implements IScene {
         const evos = [...this.runState.appliedEvolutions]
           .map((id) => `  ${id}`)
           .join("\n");
+        const arts = [...this.runState.appliedArtifacts]
+          .map((id) => `  ${id}`)
+          .join("\n");
 
         this.end.setText(
           `GAME OVER\n\n` +
@@ -618,7 +643,8 @@ export class RunScene implements IScene {
             `Level: ${this.runState.currentLevel}\n` +
             `Gold: ${this.runState.gold}` +
             `${upgrades ? `\n\nUpgrades:\n${upgrades}` : ""}` +
-            `${evos ? `\n\nEvolutions:\n${evos}` : ""}\n\n` +
+            `${evos ? `\n\nEvolutions:\n${evos}` : ""}` +
+            `${arts ? `\n\nArtifacts:\n${arts}` : ""}\n\n` +
             `Click to restart`
         );
         this.showEndScreenOverlay(() => this.resetRun());

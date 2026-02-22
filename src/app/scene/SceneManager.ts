@@ -11,6 +11,9 @@ export class SceneManager {
   private factories = new Map<string, SceneFactory>();
   private current: IScene | null = null;
 
+  /** Bag for sharing state across scene transitions (e.g. RunState). */
+  data: Record<string, unknown> = {};
+
   private loop: FixedTimestepLoop;
 
   constructor(app: Application, debug: Debug) {
