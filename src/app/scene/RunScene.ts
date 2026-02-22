@@ -34,6 +34,16 @@ const STAR_TILE_W = 2000;
 const STAR_TILE_H = 1200;
 const STAR_COUNT = 140;
 
+/** Rocket sprite scale (sprite is 64x32, nose east, engine west); ~1/3 smaller than 0.2. */
+const ROCKET_SPRITE_SCALE = 0.133;
+
+const SMOKE_TRAIL_MAX_AGE = 1.8;
+const SMOKE_TRAIL_MAX_POINTS = 100;
+const SMOKE_TRAIL_ADD_INTERVAL = 0.04;
+const SMOKE_TRAIL_MIN_SPEED = 30;
+
+type TrailPoint = { x: number; y: number; t: number };
+
 export class RunScene implements IScene {
   private scenes: SceneManager;
   private root = new Container();
@@ -65,6 +75,7 @@ export class RunScene implements IScene {
   private enemyBullets: EnemyBullet[] = [];
 
   private gfxWorld = new Graphics();
+  private gfxThrustFlame = new Graphics();
   private gfxDebug = new Graphics();
   private rocketSprite: Sprite | null = null;
   private droneContainer = new Container();
@@ -89,12 +100,18 @@ export class RunScene implements IScene {
   private shakeIntensity = 0;
   private lastDistanceM = 0;
   private coinAnimT = 0;
+  private smokeTrail: TrailPoint[] = [];
+  private lastTrailTime = 0;
 
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
   }
 
   async enter(): Promise<void> {
+    // Initialize runState and player before any await so fixedUpdate never sees undefined
+    // (SceneManager does not await enter(); ticker can run immediately after we add to stage)
+    this.resetRun();
+
     const app = this.scenes.getApp();
     this.scenes.getDebug().gfx.clear();
 
@@ -103,12 +120,6 @@ export class RunScene implements IScene {
 
     this.layers.world.addChild(this.gfxWorld);
     this.layers.world.addChild(this.coinContainer);
-    const rocketTex = getRocketTexture();
-    if (rocketTex) {
-      this.rocketSprite = new Sprite(rocketTex);
-      this.rocketSprite.anchor.set(0.5);
-      this.layers.world.addChild(this.rocketSprite);
-    }
     this.layers.world.addChild(this.droneContainer);
     this.layers.world.addChild(this.gfxDebug);
     this.layers.ui.addChild(this.hud.root);
@@ -121,6 +132,14 @@ export class RunScene implements IScene {
     this.drag = new PointerDrag(app.canvas);
 
     await loadAssets();
+    const rocketTex = getRocketTexture();
+    if (rocketTex) {
+      this.rocketSprite = new Sprite(rocketTex);
+      this.rocketSprite.anchor.set(0.5);
+      this.rocketSprite.scale.set(ROCKET_SPRITE_SCALE);
+      this.layers.world.addChild(this.rocketSprite);
+    }
+    this.layers.world.addChild(this.gfxThrustFlame);
     await this.loadCoinFrames();
     this.initStars();
 
@@ -320,6 +339,8 @@ export class RunScene implements IScene {
     this.drones = [];
     this.projectiles = [];
     this.enemyBullets = [];
+    this.smokeTrail = [];
+    this.lastTrailTime = 0;
     this.clearWorldCoins();
     this.clearDroneSprites();
     this.spawner.reset();
@@ -361,6 +382,8 @@ export class RunScene implements IScene {
     this.drones = [];
     this.projectiles = [];
     this.enemyBullets = [];
+    this.smokeTrail = [];
+    this.lastTrailTime = 0;
     this.clearWorldCoins();
     this.clearDroneSprites();
     this.spawner.reset();
@@ -777,26 +800,28 @@ export class RunScene implements IScene {
       .circle(anchorX, anchorY, 10)
       .fill({ color: 0xffcc66, alpha: 0.9 });
 
-    this.drawThrustFlame();
+    this.updateAndDrawSmokeTrail(viewW, viewH);
 
-    // Player: rocket sprite or fallback circle if asset missing
+    // Player: rocket sprite or fallback circle if asset missing; rotation = sling aim before launch, velocity after
+    const rocketAngle = this.player.launched
+      ? Math.atan2(this.player.vel.y, this.player.vel.x)
+      : this.getLaunchAimAngle();
     if (this.rocketSprite) {
       this.rocketSprite.x = this.player.pos.x;
       this.rocketSprite.y = this.player.pos.y;
-      this.rocketSprite.rotation = Math.atan2(
-        this.player.vel.y,
-        this.player.vel.x
-      );
+      this.rocketSprite.rotation = rocketAngle;
       this.rocketSprite.visible = true;
     } else {
       this.gfxWorld
         .circle(this.player.pos.x, this.player.pos.y, this.player.radius)
         .fill({ color: 0x66aaff, alpha: 0.95 });
     }
+    this.drawThrustFlame();
 
-    // Drones: UFO sprites with wobble and variant tint/scale
+    // Drones: UFO sprites with wobble and variant tint/scale (small base; elites visibly bigger)
     const WOBBLE_AMPLITUDE = 0.06;
     const WOBBLE_SPEED = 2.5;
+    const UFO_BASE_SCALE = 0.25;
     const time = performance.now() * 0.001;
     const ufoTex = getUfoTexture();
     const aliveDroneIds = new Set<number>();
@@ -817,17 +842,22 @@ export class RunScene implements IScene {
         Math.sin(time * WOBBLE_SPEED + d.wobblePhase) * WOBBLE_AMPLITUDE;
       if (d.elite) {
         sprite.tint = 0xff77aa;
-        sprite.scale.set(1.2);
+        sprite.scale.set(UFO_BASE_SCALE * 1.27);
       } else if (d.droneType === "shooter") {
         sprite.tint = 0x66ffee;
-        sprite.scale.set(1.05);
+        sprite.scale.set(UFO_BASE_SCALE * 1.05);
       } else {
         sprite.tint = 0xffffff;
-        sprite.scale.set(1.0);
+        sprite.scale.set(UFO_BASE_SCALE);
       }
     }
+    const toRemove: number[] = [];
     for (const [id, sprite] of this.droneSprites) {
-      if (!aliveDroneIds.has(id)) {
+      if (!aliveDroneIds.has(id)) toRemove.push(id);
+    }
+    for (const id of toRemove) {
+      const sprite = this.droneSprites.get(id);
+      if (sprite) {
         this.droneContainer.removeChild(sprite);
         sprite.destroy();
         this.droneSprites.delete(id);
@@ -915,39 +945,97 @@ export class RunScene implements IScene {
     }
   }
 
+  /** Sling aim angle (east = 0); used for rocket rotation before launch. */
+  private getLaunchAimAngle(): number {
+    const st = this.drag.state;
+    if (!st.isDragging) return 0;
+    const camX = -this.layers.world.x;
+    const camY = -this.layers.world.y;
+    const wx = st.x + camX;
+    const wy = st.y + camY;
+    const ax = TUNING.launcher.originX;
+    const ay = TUNING.launcher.originY;
+    return Math.atan2(ay - wy, ax - wx);
+  }
+
+  /** Engine position = left edge (vertical middle) of rocket sprite; dir = backward for exhaust. Uses sprite width so scaling is correct. */
+  private getEnginePosition(): { x: number; y: number; dirX: number; dirY: number } {
+    const angle = this.player.launched
+      ? Math.atan2(this.player.vel.y, this.player.vel.x)
+      : this.getLaunchAimAngle();
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+    const halfLength = this.rocketSprite
+      ? this.rocketSprite.width / 2
+      : 32 * ROCKET_SPRITE_SCALE;
+    return {
+      x: this.player.pos.x - dirX * halfLength,
+      y: this.player.pos.y - dirY * halfLength,
+      dirX: -dirX,
+      dirY: -dirY,
+    };
+  }
+
+  private updateAndDrawSmokeTrail(viewW: number, viewH: number) {
+    const now = performance.now() * 0.001;
+    if (this.player.launched) {
+      const speed = Math.hypot(this.player.vel.x, this.player.vel.y);
+      if (speed >= SMOKE_TRAIL_MIN_SPEED && now - this.lastTrailTime >= SMOKE_TRAIL_ADD_INTERVAL) {
+        const eng = this.getEnginePosition();
+        this.smokeTrail.push({ x: eng.x, y: eng.y, t: now });
+        this.lastTrailTime = now;
+      }
+    } else {
+      this.smokeTrail = [];
+      this.lastTrailTime = 0;
+    }
+    while (this.smokeTrail.length > SMOKE_TRAIL_MAX_POINTS) this.smokeTrail.shift();
+    while (this.smokeTrail.length > 0 && now - this.smokeTrail[0].t > SMOKE_TRAIL_MAX_AGE) this.smokeTrail.shift();
+
+    for (const p of this.smokeTrail) {
+      const age = now - p.t;
+      const life = 1 - age / SMOKE_TRAIL_MAX_AGE;
+      const alpha = life * life * 0.35;
+      const r = 2 + (1 - life) * 5;
+      this.gfxWorld.circle(p.x, p.y, r).fill({ color: 0xccccdd, alpha });
+    }
+    // Flame at contrail origin so it reads as fire emitting the smoke
+    if (this.player.launched) {
+      const eng = this.getEnginePosition();
+      this.gfxWorld.circle(eng.x, eng.y, 5).fill({ color: 0xff6600, alpha: 0.75 });
+      this.gfxWorld.circle(eng.x, eng.y, 3).fill({ color: 0xffaa00, alpha: 0.85 });
+      this.gfxWorld.circle(eng.x, eng.y, 1.5).fill({ color: 0xffdd44, alpha: 0.9 });
+    }
+  }
+
   private drawThrustFlame() {
+    this.gfxThrustFlame.clear();
     if (!this.player.launched) return;
 
     const axis = this.kb.getAxis();
     const thrusting = (axis.x !== 0 || axis.y !== 0) && this.player.boost > 0;
     if (!thrusting) return;
 
-    const len = Math.hypot(axis.x, axis.y);
-    const fx = -axis.x / len;
-    const fy = -axis.y / len;
-    const px = this.player.pos.x;
-    const py = this.player.pos.y;
-    const r = this.player.radius;
+    const eng = this.getEnginePosition();
+    const px = eng.x;
+    const py = eng.y;
+    const fx = eng.dirX;
+    const fy = eng.dirY;
 
     const jx = (Math.random() - 0.5) * 4;
     const jy = (Math.random() - 0.5) * 4;
+    const off1 = 8;
+    const off2 = 16;
+    const off3 = 22;
 
-    this.gfxWorld
-      .circle(px + fx * (r + 6) + jx, py + fy * (r + 6) + jy, 8)
-      .fill({ color: 0xff6600, alpha: 0.8 });
-    this.gfxWorld
-      .circle(
-        px + fx * (r + 15) + jx * 1.5,
-        py + fy * (r + 15) + jy * 1.5,
-        5
-      )
-      .fill({ color: 0xffaa00, alpha: 0.6 });
-    this.gfxWorld
-      .circle(
-        px + fx * (r + 22) + jx * 2,
-        py + fy * (r + 22) + jy * 2,
-        3
-      )
-      .fill({ color: 0xffdd44, alpha: 0.4 });
+    this.gfxThrustFlame
+      .circle(px + fx * off1 + jx, py + fy * off1 + jy, 5)
+      .fill({ color: 0xff6600, alpha: 0.85 });
+    this.gfxThrustFlame
+      .circle(px + fx * off2 + jx * 1.5, py + fy * off2 + jy * 1.5, 3.5)
+      .fill({ color: 0xffaa00, alpha: 0.65 });
+    this.gfxThrustFlame
+      .circle(px + fx * off3 + jx * 2, py + fy * off3 + jy * 2, 2)
+      .fill({ color: 0xffdd44, alpha: 0.45 });
   }
 }
