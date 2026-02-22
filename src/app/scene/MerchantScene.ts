@@ -1,17 +1,30 @@
-import { Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import {
+  AnimatedSprite,
+  Assets,
+  Container,
+  Graphics,
+  Rectangle,
+  Sprite,
+  Text,
+  Texture,
+} from "pixi.js";
 import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
 import type { RunState } from "../../sim/runtime/RunState";
 import { rollUpgradeChoices } from "../../content/upgrades/upgradePool";
 import { ARTIFACT_DEFS } from "../../content/artifacts/artifactDefs";
 import { TUNING } from "../../content/tuning";
-import type { UpgradeChoice, UpgradeRarity } from "../../content/upgrades/upgradeTypes";
+import type {
+  UpgradeChoice,
+  UpgradeRarity,
+} from "../../content/upgrades/upgradeTypes";
 import type { ArtifactDef } from "../../content/artifacts/artifactTypes";
 
 const CARD_W = 220;
 const CARD_H = 170;
 const CARD_GAP = 20;
 const COLS = 3;
+const COIN_FRAMES = 8;
 
 const RARITY_PRICE: Record<UpgradeRarity, number> = {
   common: TUNING.merchant.upgradePriceCommon,
@@ -43,6 +56,12 @@ export class MerchantScene implements IScene {
   private items: ShopItem[] = [];
   private runState!: RunState;
 
+  private elapsed = 0;
+  private continueBtn!: Container;
+  private continueBtnBaseY = 0;
+  private viewW = 0;
+  private viewH = 0;
+
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
   }
@@ -53,8 +72,10 @@ export class MerchantScene implements IScene {
 
     this.runState = this.scenes.data.runState as RunState;
 
-    const w = app.renderer.width;
-    const h = app.renderer.height;
+    this.viewW = app.renderer.width;
+    this.viewH = app.renderer.height;
+    const w = this.viewW;
+    const h = this.viewH;
 
     try {
       const tex = await Assets.load<Texture>("/merchant_mockup.png");
@@ -73,40 +94,7 @@ export class MerchantScene implements IScene {
     dimOverlay.fill({ color: 0x000000, alpha: 0.45 });
     this.root.addChild(dimOverlay);
 
-    const title = new Text({
-      text: "MERCHANT",
-      style: {
-        fill: 0xffd870,
-        fontSize: 36,
-        fontFamily: "system-ui, sans-serif",
-        fontWeight: "bold",
-        letterSpacing: 4,
-        dropShadow: {
-          color: 0x000000,
-          blur: 6,
-          distance: 2,
-          angle: Math.PI / 3,
-        },
-      },
-    });
-    title.anchor.set(0.5, 0);
-    title.x = w / 2;
-    title.y = 30;
-    this.root.addChild(title);
-
-    this.goldText = new Text({
-      text: `Gold: ${this.runState.gold}`,
-      style: {
-        fill: 0xffe066,
-        fontSize: 24,
-        fontFamily: "system-ui, sans-serif",
-        fontWeight: "bold",
-      },
-    });
-    this.goldText.anchor.set(1, 0);
-    this.goldText.x = w - 30;
-    this.goldText.y = 36;
-    this.root.addChild(this.goldText);
+    await this.buildGoldDisplay(w);
 
     if (this.runState.appliedArtifacts.size > 0) {
       const owned = [...this.runState.appliedArtifacts].join(", ");
@@ -126,15 +114,77 @@ export class MerchantScene implements IScene {
 
     this.generateShop();
     this.buildCards(w, h);
+    this.buildRerollButton(w, h);
     this.buildContinueButton(w, h);
   }
 
   exit(): void {}
 
-  update(_dt: number): void {
+  update(dt: number): void {
+    this.elapsed += dt;
+
     if (this.goldText) {
-      this.goldText.text = `Gold: ${this.runState.gold}`;
+      this.goldText.text = `${this.runState.gold} gold`;
     }
+
+    if (this.continueBtn) {
+      const bob = Math.sin(this.elapsed * 1.6) * 8;
+      const drift = Math.sin(this.elapsed * 2.9) * 2.5;
+      this.continueBtn.y = this.continueBtnBaseY + bob + drift;
+
+      const pulse = 1.0 + Math.sin(this.elapsed * 2.2) * 0.015;
+      this.continueBtn.scale.set(pulse);
+
+      this.continueBtn.rotation = Math.sin(this.elapsed * 1.1) * 0.015;
+    }
+  }
+
+  private async buildGoldDisplay(viewW: number) {
+    const goldContainer = new Container();
+
+    try {
+      const sheetTex = await Assets.load<Texture>("/coin_flip_sheet.png");
+      const frameW = sheetTex.width / COIN_FRAMES;
+      const frameH = sheetTex.height;
+      const frames: Texture[] = [];
+      for (let i = 0; i < COIN_FRAMES; i++) {
+        frames.push(
+          new Texture({
+            source: sheetTex.source,
+            frame: new Rectangle(i * frameW, 0, frameW, frameH),
+          })
+        );
+      }
+      const coinSprite = new AnimatedSprite(frames);
+      coinSprite.width = 28;
+      coinSprite.height = 28;
+      coinSprite.anchor.set(0.5);
+      coinSprite.animationSpeed = 0.18;
+      coinSprite.play();
+      coinSprite.x = -18;
+      coinSprite.y = 0;
+      goldContainer.addChild(coinSprite);
+    } catch {
+      // no coin sprite, text only
+    }
+
+    this.goldText = new Text({
+      text: `${this.runState.gold} gold`,
+      style: {
+        fill: 0xffffff,
+        fontSize: 22,
+        fontFamily: "system-ui, sans-serif",
+        fontWeight: "bold",
+      },
+    });
+    this.goldText.anchor.set(0, 0.5);
+    this.goldText.x = 0;
+    this.goldText.y = 0;
+    goldContainer.addChild(this.goldText);
+
+    goldContainer.x = viewW - 30 - this.goldText.width;
+    goldContainer.y = 40;
+    this.root.addChild(goldContainer);
   }
 
   private generateShop() {
@@ -144,7 +194,7 @@ export class MerchantScene implements IScene {
     const choices = rollUpgradeChoices(
       rng,
       this.runState.appliedUpgrades,
-      4,
+      3,
       this.runState.weaponLoadout
     );
     for (const c of choices) {
@@ -160,7 +210,7 @@ export class MerchantScene implements IScene {
       (a) => !this.runState.appliedArtifacts.has(a.id)
     );
     const shuffled = rng.shuffle([...available]);
-    for (let i = 0; i < Math.min(2, shuffled.length); i++) {
+    for (let i = 0; i < Math.min(3, shuffled.length); i++) {
       this.items.push({
         type: "artifact",
         artifactDef: shuffled[i],
@@ -178,11 +228,10 @@ export class MerchantScene implements IScene {
     this.cards = [];
     this.cardBgs = [];
 
-    const rows = Math.ceil(this.items.length / COLS);
     const totalW = COLS * CARD_W + (COLS - 1) * CARD_GAP;
-    const totalH = rows * CARD_H + (rows - 1) * CARD_GAP;
+    const totalH = 2 * CARD_H + CARD_GAP;
     const startX = (viewW - totalW) / 2;
-    const startY = (viewH - totalH) / 2 - 10;
+    const startY = (viewH - totalH) / 2 - 20;
 
     for (let i = 0; i < this.items.length; i++) {
       const row = Math.floor(i / COLS);
@@ -205,21 +254,21 @@ export class MerchantScene implements IScene {
     bg.roundRect(0, 0, CARD_W, CARD_H, 12);
     bg.fill({ color: 0x12122a, alpha: 0.92 });
     bg.roundRect(0, 0, CARD_W, CARD_H, 12);
-    bg.stroke({ width: 2, color: borderColor, alpha: affordable ? 0.8 : 0.3 });
+    bg.stroke({
+      width: 2,
+      color: borderColor,
+      alpha: affordable ? 0.8 : 0.3,
+    });
     c.addChild(bg);
     this.cardBgs.push(bg);
 
-    if (isArtifact) {
-      const accentBar = new Graphics();
-      accentBar.roundRect(2, 2, CARD_W - 4, 4, 2);
-      accentBar.fill({ color: 0xffd870, alpha: 0.7 });
-      c.addChild(accentBar);
-    } else {
-      const accentBar = new Graphics();
-      accentBar.roundRect(2, 2, CARD_W - 4, 4, 2);
-      accentBar.fill({ color: borderColor, alpha: 0.6 });
-      c.addChild(accentBar);
-    }
+    const accentBar = new Graphics();
+    accentBar.roundRect(2, 2, CARD_W - 4, 4, 2);
+    accentBar.fill({
+      color: isArtifact ? 0xffd870 : borderColor,
+      alpha: isArtifact ? 0.7 : 0.6,
+    });
+    c.addChild(accentBar);
 
     const typeLabel = new Text({
       text: isArtifact ? "ARTIFACT" : "UPGRADE",
@@ -353,6 +402,12 @@ export class MerchantScene implements IScene {
     this.updateCardAffordability();
   }
 
+  private rerollShop() {
+    this.generateShop();
+    this.buildCards(this.viewW, this.viewH);
+    this.updateCardAffordability();
+  }
+
   private updateCardAffordability() {
     for (let i = 0; i < this.items.length; i++) {
       const item = this.items[i];
@@ -370,46 +425,147 @@ export class MerchantScene implements IScene {
     return RARITY_COLORS[item.upgradeChoice.def.rarity];
   }
 
-  private buildContinueButton(viewW: number, viewH: number) {
+  private buildRerollButton(viewW: number, viewH: number) {
     const btn = new Container();
-    const W = 200;
-    const H = 50;
-    const R = 14;
+    const S = 38;
 
     const bg = new Graphics();
-    bg.roundRect(-W / 2, -H / 2, W, H, R);
-    bg.fill({ color: 0x2244aa });
-    bg.roundRect(-W / 2, -H / 2, W, H, R);
-    bg.stroke({ width: 2, color: 0x4488ff, alpha: 0.8 });
+    bg.roundRect(-S / 2, -S / 2, S, S, 10);
+    bg.fill({ color: 0x1a1a3a, alpha: 0.9 });
+    bg.roundRect(-S / 2, -S / 2, S, S, 10);
+    bg.stroke({ width: 1.5, color: 0x556688, alpha: 0.6 });
     btn.addChild(bg);
 
-    const label = new Text({
-      text: "CONTINUE",
-      style: {
-        fill: 0xffffff,
-        fontSize: 20,
-        fontFamily: "system-ui, sans-serif",
-        fontWeight: "bold",
-        letterSpacing: 2,
-      },
-    });
-    label.anchor.set(0.5);
-    btn.addChild(label);
+    const arrow = new Graphics();
+    const r = 8;
+    const cx = 0;
+    const cy = 0;
+    const segments = 20;
+    const startAngle = -Math.PI * 0.15;
+    const endAngle = Math.PI * 1.45;
 
-    btn.x = viewW / 2;
-    btn.y = viewH - 60;
+    arrow.moveTo(
+      cx + Math.cos(startAngle) * r,
+      cy + Math.sin(startAngle) * r
+    );
+    for (let i = 1; i <= segments; i++) {
+      const a = startAngle + ((endAngle - startAngle) * i) / segments;
+      arrow.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    }
+    arrow.stroke({ width: 2.5, color: 0x88aacc, alpha: 0.9 });
+
+    const tipAngle = endAngle;
+    const tipX = cx + Math.cos(tipAngle) * r;
+    const tipY = cy + Math.sin(tipAngle) * r;
+    const arrowLen = 5;
+    arrow.moveTo(tipX, tipY);
+    arrow.lineTo(
+      tipX + Math.cos(tipAngle + 0.6) * arrowLen,
+      tipY + Math.sin(tipAngle + 0.6) * arrowLen
+    );
+    arrow.moveTo(tipX, tipY);
+    arrow.lineTo(
+      tipX + Math.cos(tipAngle - 1.2) * arrowLen,
+      tipY + Math.sin(tipAngle - 1.2) * arrowLen
+    );
+    arrow.stroke({ width: 2.5, color: 0x88aacc, alpha: 0.9 });
+
+    btn.addChild(arrow);
+
+    const totalW = COLS * CARD_W + (COLS - 1) * CARD_GAP;
+    const gridStartX = (viewW - totalW) / 2;
+    const totalH = 2 * CARD_H + CARD_GAP;
+    const gridStartY = (viewH - totalH) / 2 - 20;
+
+    btn.x = gridStartX + totalW - S / 2 + 4;
+    btn.y = gridStartY + totalH + 14 + S / 2;
+
     btn.eventMode = "static";
     btn.cursor = "pointer";
-    btn.on("pointerdown", () => {
-      this.scenes.switchTo("run");
-    });
+    btn.on("pointerdown", () => this.rerollShop());
     btn.on("pointerover", () => {
-      bg.tint = 0xccccff;
+      bg.tint = 0xaaccff;
     });
     btn.on("pointerout", () => {
       bg.tint = 0xffffff;
     });
 
+    this.root.addChild(btn);
+  }
+
+  private buildContinueButton(viewW: number, viewH: number) {
+    const btn = new Container();
+    const W = 230;
+    const H = 68;
+    const R = 18;
+
+    const glow = new Graphics();
+    glow.roundRect(-W / 2 - 14, -H / 2 - 14, W + 28, H + 28, R + 12);
+    glow.fill({ color: 0x4080ff, alpha: 0.18 });
+    glow.roundRect(-W / 2 - 8, -H / 2 - 8, W + 16, H + 16, R + 6);
+    glow.fill({ color: 0x4080ff, alpha: 0.12 });
+    btn.addChild(glow);
+
+    const base = new Graphics();
+    base.roundRect(-W / 2 + 2, -H / 2 + 4, W, H, R);
+    base.fill({ color: 0x0a1e4a, alpha: 0.7 });
+    btn.addChild(base);
+
+    const body = new Graphics();
+    body.roundRect(-W / 2, -H / 2, W, H, R);
+    body.fill({ color: 0x2855b0 });
+    btn.addChild(body);
+
+    const hi = new Graphics();
+    hi.roundRect(-W / 2 + 4, -H / 2 + 4, W - 8, H * 0.4, R - 4);
+    hi.fill({ color: 0x5588dd, alpha: 0.55 });
+    btn.addChild(hi);
+
+    const lo = new Graphics();
+    lo.roundRect(-W / 2 + 4, H / 2 - H * 0.35, W - 8, H * 0.3, R - 4);
+    lo.fill({ color: 0x1a3870, alpha: 0.35 });
+    btn.addChild(lo);
+
+    const rim = new Graphics();
+    rim.roundRect(-W / 2, -H / 2, W, H, R);
+    rim.stroke({ width: 2.5, color: 0x88bbff, alpha: 0.85 });
+    btn.addChild(rim);
+
+    const inset = new Graphics();
+    inset.roundRect(-W / 2 + 3, -H / 2 + 3, W - 6, H - 6, R - 2);
+    inset.stroke({ width: 1, color: 0xb0d0ff, alpha: 0.3 });
+    btn.addChild(inset);
+
+    const label = new Text({
+      text: "CONTINUE",
+      style: {
+        fill: 0xf0f4ff,
+        fontSize: 30,
+        fontFamily: "system-ui, sans-serif",
+        fontWeight: "bold",
+        letterSpacing: 3,
+        dropShadow: {
+          color: 0x0a1844,
+          blur: 3,
+          distance: 2,
+          angle: Math.PI / 3,
+        },
+      },
+    });
+    label.anchor.set(0.5);
+    label.y = -1;
+    btn.addChild(label);
+
+    btn.x = viewW / 2;
+    btn.y = viewH - 70;
+    this.continueBtnBaseY = btn.y;
+    btn.eventMode = "static";
+    btn.cursor = "pointer";
+    btn.on("pointerdown", () => {
+      this.scenes.switchTo("run");
+    });
+
+    this.continueBtn = btn;
     this.root.addChild(btn);
   }
 

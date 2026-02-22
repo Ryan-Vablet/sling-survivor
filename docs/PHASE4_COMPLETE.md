@@ -8,8 +8,8 @@ Phase 4 adds a post-round Merchant scene where the player can spend **Gold** on 
 
 - **File**: `src/app/scene/MerchantScene.ts`
 - **Trigger**: After round clear → pending upgrades drained → scene switches to `"merchant"`
-- **Background**: `merchant_mockup.png` (cover-fit), with a dim overlay for card readability
-- **Layout**: Title, gold counter, 6 shop cards (2 rows × 3), Continue button
+- **Background**: `merchant_mockup.png` (cover-fit), with a dim overlay for card readability. The "MERCHANT" title is embedded in the background image.
+- **Layout**: Animated coin + gold counter (top-right), 6 shop cards (2 rows × 3), reroll button, floating Continue button
 
 ### Scene Flow
 
@@ -25,8 +25,8 @@ State is preserved across transitions via `SceneManager.data.runState`.
 
 Each merchant visit generates exactly 6 cards:
 
-- **4 normal upgrades**: pulled from existing `UpgradeDefs` via `rollUpgradeChoices`, respecting stack limits, prerequisites, and exclusions
-- **2 artifacts**: randomly selected from available (unowned) artifacts
+- **3 upgrade cards** (top row): pulled from existing `UpgradeDefs` via `rollUpgradeChoices`, respecting stack limits, prerequisites, and exclusions
+- **3 artifact cards** (bottom row): randomly selected from available (unowned) artifacts
 
 ### Pricing
 
@@ -44,6 +44,30 @@ Prices are configured in `TUNING.merchant`.
 - Click an affordable card → gold deducted, effect applied, card grayed out
 - Click an unaffordable card → card shakes (visual feedback)
 - After each purchase, remaining card affordability updates
+
+### Reroll
+
+- Small button positioned below the bottom-right card
+- Muted dark style with a hand-drawn circular refresh arrow icon
+- Re-generates all unpurchased shop items (upgrades + artifacts)
+
+## UI Details
+
+### Gold Display
+
+- Animated spinning coin sprite (28×28, loaded from `coin_flip_sheet.png`) displayed next to white text reading `{amount} gold`
+- Positioned top-right of the screen
+- Updates live after each purchase
+
+### Continue Button
+
+- Styled like the title screen's LAUNCH button but in blue:
+  - Blue glow aura (`0x4080ff`)
+  - Dark drop shadow base
+  - Beveled body (`0x2855b0`) with highlight/shadow bands
+  - Crisp blue border (`0x88bbff`) + inner inset line
+  - 30px "CONTINUE" text with drop shadow
+- Floating animation: bob + drift + gentle scale pulse + subtle tilt (matches title screen)
 
 ## Artifact System
 
@@ -99,7 +123,7 @@ type ArtifactDef = {
 |------|--------|
 | `src/content/artifacts/artifactTypes.ts` | NEW — ArtifactDef type |
 | `src/content/artifacts/artifactDefs.ts` | NEW — 4 artifact definitions |
-| `src/app/scene/MerchantScene.ts` | NEW — merchant scene with shop UI |
+| `src/app/scene/MerchantScene.ts` | NEW — merchant scene with shop UI, animated gold display, beveled Continue button, reroll button |
 | `src/app/scene/SceneManager.ts` | Added `data` bag |
 | `src/app/createApp.ts` | Registered `"merchant"` scene |
 | `src/sim/runtime/RunState.ts` | Added `appliedArtifacts`, `applyArtifactBonuses()` |
