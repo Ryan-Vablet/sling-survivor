@@ -26,6 +26,8 @@ export type Drone = {
   elite: boolean;
   droneType: DroneType;
   shootTimer: number;
+  /** Phase offset for wobble (0..2π), visual only. */
+  wobblePhase: number;
 };
 
 export type Projectile = {

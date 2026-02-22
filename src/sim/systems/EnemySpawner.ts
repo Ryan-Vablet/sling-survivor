@@ -87,6 +87,7 @@ export class EnemySpawner {
         elite: isElite,
         droneType: isShooter ? "shooter" : "chaser",
         shootTimer: isShooter ? TUNING.shooter.fireCooldown : 0,
+        wobblePhase: rng.nextFloat() * Math.PI * 2,
       });
     }
   }
@@ -103,6 +104,7 @@ export class EnemySpawner {
       elite: false,
       droneType: "shooter",
       shootTimer: TUNING.shooter.fireCooldown,
+      wobblePhase: Math.random() * Math.PI * 2,
     });
   }
 }

@@ -1,9 +1,9 @@
-import { AnimatedSprite, Assets, Container, Graphics, Rectangle, Texture } from "pixi.js";
+import { AnimatedSprite, Assets, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
 import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
 import { Layers } from "../../render/layers";
 import { Camera2D } from "../../render/Camera2D";
-import { loadAssets } from "../../render/assets";
+import { getRocketTexture, getUfoTexture, loadAssets } from "../../render/assets";
 import { Keyboard } from "../../core/input/Keyboard";
 import { PointerDrag } from "../../core/input/PointerDrag";
 import { TUNING } from "../../content/tuning";
@@ -66,6 +66,9 @@ export class RunScene implements IScene {
 
   private gfxWorld = new Graphics();
   private gfxDebug = new Graphics();
+  private rocketSprite: Sprite | null = null;
+  private droneContainer = new Container();
+  private droneSprites = new Map<number, Sprite>();
   private hud = new Hud();
   private end = new EndScreen();
   private ended = false;
@@ -100,6 +103,13 @@ export class RunScene implements IScene {
 
     this.layers.world.addChild(this.gfxWorld);
     this.layers.world.addChild(this.coinContainer);
+    const rocketTex = getRocketTexture();
+    if (rocketTex) {
+      this.rocketSprite = new Sprite(rocketTex);
+      this.rocketSprite.anchor.set(0.5);
+      this.layers.world.addChild(this.rocketSprite);
+    }
+    this.layers.world.addChild(this.droneContainer);
     this.layers.world.addChild(this.gfxDebug);
     this.layers.ui.addChild(this.hud.root);
     this.layers.ui.addChild(this.upgradeOverlay.root);
@@ -297,12 +307,21 @@ export class RunScene implements IScene {
     }
   }
 
+  private clearDroneSprites() {
+    for (const sprite of this.droneSprites.values()) {
+      this.droneContainer.removeChild(sprite);
+      sprite.destroy();
+    }
+    this.droneSprites.clear();
+  }
+
   private resetRun() {
     this.ended = false;
     this.drones = [];
     this.projectiles = [];
     this.enemyBullets = [];
     this.clearWorldCoins();
+    this.clearDroneSprites();
     this.spawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
@@ -343,6 +362,7 @@ export class RunScene implements IScene {
     this.projectiles = [];
     this.enemyBullets = [];
     this.clearWorldCoins();
+    this.clearDroneSprites();
     this.spawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
@@ -757,35 +777,60 @@ export class RunScene implements IScene {
       .circle(anchorX, anchorY, 10)
       .fill({ color: 0xffcc66, alpha: 0.9 });
 
-    this.gfxWorld
-      .circle(this.player.pos.x, this.player.pos.y, this.player.radius)
-      .fill({ color: 0x66aaff, alpha: 0.95 });
-
     this.drawThrustFlame();
 
-    // Drones
+    // Player: rocket sprite or fallback circle if asset missing
+    if (this.rocketSprite) {
+      this.rocketSprite.x = this.player.pos.x;
+      this.rocketSprite.y = this.player.pos.y;
+      this.rocketSprite.rotation = Math.atan2(
+        this.player.vel.y,
+        this.player.vel.x
+      );
+      this.rocketSprite.visible = true;
+    } else {
+      this.gfxWorld
+        .circle(this.player.pos.x, this.player.pos.y, this.player.radius)
+        .fill({ color: 0x66aaff, alpha: 0.95 });
+    }
+
+    // Drones: UFO sprites with wobble and variant tint/scale
+    const WOBBLE_AMPLITUDE = 0.06;
+    const WOBBLE_SPEED = 2.5;
+    const time = performance.now() * 0.001;
+    const ufoTex = getUfoTexture();
+    const aliveDroneIds = new Set<number>();
     for (const d of this.drones) {
       if (!d.alive) continue;
-      let color: number;
-      if (d.droneType === "shooter") {
-        color = 0xffaa33;
-      } else if (d.elite) {
-        color = 0xff3366;
-      } else {
-        color = 0xff66cc;
+      aliveDroneIds.add(d.id);
+      if (!ufoTex) continue;
+      let sprite = this.droneSprites.get(d.id);
+      if (!sprite) {
+        sprite = new Sprite(ufoTex);
+        sprite.anchor.set(0.5);
+        this.droneContainer.addChild(sprite);
+        this.droneSprites.set(d.id, sprite);
       }
-      this.gfxWorld
-        .circle(d.pos.x, d.pos.y, d.radius)
-        .fill({ color, alpha: 0.9 });
+      sprite.x = d.pos.x;
+      sprite.y = d.pos.y;
+      sprite.rotation =
+        Math.sin(time * WOBBLE_SPEED + d.wobblePhase) * WOBBLE_AMPLITUDE;
       if (d.elite) {
-        this.gfxWorld
-          .circle(d.pos.x, d.pos.y, d.radius + 3)
-          .stroke({ width: 2, color: 0xff0044, alpha: 0.6 });
+        sprite.tint = 0xff77aa;
+        sprite.scale.set(1.2);
+      } else if (d.droneType === "shooter") {
+        sprite.tint = 0x66ffee;
+        sprite.scale.set(1.05);
+      } else {
+        sprite.tint = 0xffffff;
+        sprite.scale.set(1.0);
       }
-      if (d.droneType === "shooter") {
-        this.gfxWorld
-          .circle(d.pos.x, d.pos.y, d.radius + 2)
-          .stroke({ width: 1.5, color: 0xff8800, alpha: 0.5 });
+    }
+    for (const [id, sprite] of this.droneSprites) {
+      if (!aliveDroneIds.has(id)) {
+        this.droneContainer.removeChild(sprite);
+        sprite.destroy();
+        this.droneSprites.delete(id);
       }
     }
 
