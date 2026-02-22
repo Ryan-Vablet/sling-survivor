@@ -2,6 +2,7 @@ import { AnimatedSprite, Assets, Container, Graphics, Rectangle, Sprite, Text, T
 import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
 import { assetUrl } from "../../render/assets";
+import { HelpOverlay } from "../../ui/HelpOverlay";
 
 const COIN_FRAMES = 8;
 const COIN_FRAME_SIZE = 256;
@@ -14,6 +15,7 @@ export class TitleScene implements IScene {
   private btnBaseY = 0;
   private bg: Sprite | null = null;
   private coin: AnimatedSprite | null = null;
+  private helpOverlay = new HelpOverlay();
 
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
@@ -25,6 +27,16 @@ export class TitleScene implements IScene {
 
     const w = app.renderer.width;
     const h = app.renderer.height;
+
+    this.root.addChild(this.helpOverlay.root);
+
+    const helpIcon = this.buildHelpIcon();
+    helpIcon.x = w - 36;
+    helpIcon.y = 36;
+    this.root.addChild(helpIcon);
+    helpIcon.eventMode = "static";
+    helpIcon.cursor = "pointer";
+    helpIcon.on("pointerdown", () => this.helpOverlay.show(w, h));
 
     // Build button immediately (appears on top once bg loads behind it)
     this.btn = this.buildLaunchButton();
@@ -96,6 +108,30 @@ export class TitleScene implements IScene {
     this.bg.scale.set(scale);
     this.bg.x = (viewW - tex.width * scale) / 2;
     this.bg.y = (viewH - tex.height * scale) / 2;
+  }
+
+  /** Help (?) icon for rules popup. */
+  private buildHelpIcon(): Container {
+    const c = new Container();
+    const r = 18;
+    const circle = new Graphics();
+    circle.circle(0, 0, r);
+    circle.fill({ color: 0x2a3a4a, alpha: 0.95 });
+    circle.circle(0, 0, r);
+    circle.stroke({ width: 2, color: 0x6688aa, alpha: 0.9 });
+    c.addChild(circle);
+    const q = new Text({
+      text: "?",
+      style: {
+        fill: 0xffffff,
+        fontSize: 22,
+        fontFamily: "system-ui, sans-serif",
+        fontWeight: "bold",
+      },
+    });
+    q.anchor.set(0.5);
+    c.addChild(q);
+    return c;
   }
 
   /** Gold ingot-style "LAUNCH" button with beveled layers. */
