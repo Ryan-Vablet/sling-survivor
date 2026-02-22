@@ -2,6 +2,21 @@
 
 A 2D launcher-first rocket game built with Vite + TypeScript + PixiJS.
 
+## Versioning (AI-iteration)
+
+The app shows a version badge in the **bottom-right** corner (from `src/version.ts`).
+
+We use a two-part scheme suited to iterating with an AI assistant:
+
+| Part | Meaning | When to bump |
+|------|---------|----------------|
+| **Milestone** | Agreed “we hit a goal” (e.g. first deploy, feature-complete, 1.0). | When you and the AI agree a milestone is reached. |
+| **Iteration** | One step of work (each prompt exchange that changes the project). | On every such change; the AI bumps it. Resets to `0` when Milestone bumps. |
+
+**Display:** `v{Milestone}.{Iteration}` — e.g. `v0.6` → after a milestone → `v1.0` → `v1.1` …
+
+**Single source of truth:** root `VERSION` file (one line, e.g. `0.6` or `1.0`). The app reads it at build time. Edit this file to bump version; the AI increments the iteration number when it edits the project; you bump the milestone (e.g. to `1.0`) when you hit a goal.
+
 ## Requirements
 
 - Node 18+ recommended
