@@ -30,10 +30,9 @@ export class DroneAI {
   private stepChaser(d: Drone, player: Player, dt: number) {
     const to = v2.sub(player.pos, d.pos);
     const dir = v2.norm(to);
-    const spd = d.elite ? TUNING.elite.speed : TUNING.enemy.droneSpeed;
 
-    d.vel.x = dir.x * spd;
-    d.vel.y = dir.y * spd;
+    d.vel.x = dir.x * d.speed;
+    d.vel.y = dir.y * d.speed;
 
     d.pos.x += d.vel.x * dt;
     d.pos.y += d.vel.y * dt;
@@ -51,14 +50,14 @@ export class DroneAI {
     const dir = v2.norm(to);
 
     if (dist > s.preferDistMax) {
-      d.vel.x = dir.x * s.speed;
-      d.vel.y = dir.y * s.speed;
+      d.vel.x = dir.x * d.speed;
+      d.vel.y = dir.y * d.speed;
     } else if (dist < s.preferDistMin) {
-      d.vel.x = -dir.x * s.speed;
-      d.vel.y = -dir.y * s.speed;
+      d.vel.x = -dir.x * d.speed;
+      d.vel.y = -dir.y * d.speed;
     } else {
-      d.vel.x = -dir.y * s.speed * 0.35;
-      d.vel.y = dir.x * s.speed * 0.35;
+      d.vel.x = -dir.y * d.speed * 0.35;
+      d.vel.y = dir.x * d.speed * 0.35;
     }
 
     d.pos.x += d.vel.x * dt;

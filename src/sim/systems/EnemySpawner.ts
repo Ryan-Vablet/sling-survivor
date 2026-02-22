@@ -1,4 +1,5 @@
 import { TUNING } from "../../content/tuning";
+import type { TierDef } from "../../content/tiers/tierTypes";
 import type { Drone, Player } from "../entities";
 import type { RNG } from "../../core/rng/rng";
 
@@ -18,6 +19,7 @@ export class EnemySpawner {
     drones: Drone[],
     rng: RNG,
     distanceM: number,
+    tier: TierDef,
     dt: number
   ) {
     if (!player.launched) return;
@@ -41,17 +43,34 @@ export class EnemySpawner {
       this.t = 0;
       this.spawnCount++;
 
+      const shooterChance =
+        TUNING.shooter.spawnRatio + tier.difficulty.shooterChanceAdd;
       const isShooter =
         distanceM >= TUNING.shooter.minDistanceM &&
-        rng.nextFloat() < TUNING.shooter.spawnRatio;
+        rng.nextFloat() < shooterChance;
 
-      const isElite =
-        !isShooter &&
-        this.spawnCount > 0 &&
-        this.spawnCount % TUNING.elite.spawnEveryN === 0;
+      const eliteBase = this.spawnCount > 0 && this.spawnCount % TUNING.elite.spawnEveryN === 0;
+      const eliteBonus = rng.nextFloat() < tier.difficulty.eliteChanceAdd;
+      const isElite = !isShooter && (eliteBase || eliteBonus);
+
+      const hpMult = tier.difficulty.enemyHpMult;
+      const spdMult = tier.difficulty.enemySpeedMult;
 
       const spawnX = player.pos.x + 600 + rng.nextFloat() * 400;
       const spawnY = player.pos.y - 200 - rng.nextFloat() * 250;
+
+      let baseHp: number;
+      let baseSpeed: number;
+      if (isShooter) {
+        baseHp = TUNING.shooter.hp;
+        baseSpeed = TUNING.shooter.speed;
+      } else if (isElite) {
+        baseHp = TUNING.elite.hp;
+        baseSpeed = TUNING.elite.speed;
+      } else {
+        baseHp = 20;
+        baseSpeed = TUNING.enemy.droneSpeed;
+      }
 
       drones.push({
         id: this.nextId++,
@@ -62,11 +81,8 @@ export class EnemySpawner {
           : isElite
             ? TUNING.elite.radius
             : 14,
-        hp: isShooter
-          ? TUNING.shooter.hp
-          : isElite
-            ? TUNING.elite.hp
-            : 20,
+        hp: Math.round(baseHp * hpMult),
+        speed: baseSpeed * spdMult,
         alive: true,
         elite: isElite,
         droneType: isShooter ? "shooter" : "chaser",
@@ -82,6 +98,7 @@ export class EnemySpawner {
       vel: { x: 0, y: 0 },
       radius: TUNING.shooter.radius,
       hp: TUNING.shooter.hp,
+      speed: TUNING.shooter.speed,
       alive: true,
       elite: false,
       droneType: "shooter",

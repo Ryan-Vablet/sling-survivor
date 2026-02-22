@@ -126,6 +126,19 @@ Evolutions transform a weapon when upgrade prerequisites are met.
 
 Evolutions trigger automatically after picking the qualifying upgrade. A toast notification and screen shake confirm the evolution.
 
+## Distance Tiers
+
+Pushing further increases both rewards and difficulty. Ground color shifts with each tier.
+
+| Tier | Name | Start | Scrap x | Coin x | HP x | Speed x |
+|------|------|-------|---------|--------|------|---------|
+| T0 | Low Orbit | 0m | 1.00 | 1.00 | 1.00 | 1.00 |
+| T1 | Debris Field | 1000m | 1.25 | 1.25 | 1.20 | 1.05 |
+| T2 | Asteroid Belt | 2000m | 1.50 | 1.50 | 1.45 | 1.10 |
+| T3 | Deep Space | 3000m | 2.00 | 2.00 | 1.85 | 1.15 |
+
+Tier badge and multipliers are shown in the HUD. A toast appears on tier transitions.
+
 ## Enemies
 
 ### Chaser Drones
@@ -133,7 +146,7 @@ Evolutions trigger automatically after picking the qualifying upgrade. A toast n
 - Every 5th spawn is an **elite**: larger, faster, 60 HP, 4 contact damage
 
 ### Shooter Drones
-- Appear after 200m (~25% of spawns)
+- Appear after 200m (~25% base + tier bonus)
 - Maintain distance (350–550px), strafe when in range
 - Fire slow bullets (350 px/s) every 1.5s
 - Bullets apply light momentum penalty (vel ×0.9) + 0.3s drag debuff + 1 damage
@@ -142,12 +155,13 @@ Evolutions trigger automatically after picking the qualifying upgrade. A toast n
 ### Ramp
 - Spawn interval decreases with distance (min 0.8s)
 - Max alive increases with distance (cap 15)
+- Tier multipliers increase enemy HP, speed, and shooter/elite spawn chances
 
 ## Architecture
 
 ```
 src/
-  content/        ← pure data: tuning, upgrade defs, weapon defs, evolution defs
+  content/        ← pure data: tuning, upgrade defs, weapon defs, evolution defs, tier defs, artifact defs
   core/           ← engine: input, RNG, math, debug
   sim/            ← runtime: entities, physics, systems, RunState
   ui/             ← Pixi UI: HUD, end screen, upgrade overlay

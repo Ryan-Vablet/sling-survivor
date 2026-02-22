@@ -18,6 +18,7 @@ import { CollisionSystem } from "../../sim/systems/CollisionSystem";
 import { StallSystem } from "../../sim/systems/StallSystem";
 import { UpgradeSystem } from "../../sim/systems/UpgradeSystem";
 import { EvolutionSystem } from "../../sim/systems/EvolutionSystem";
+import { TierSystem } from "../../sim/systems/TierSystem";
 import { RunState } from "../../sim/runtime/RunState";
 import { rollUpgradeChoices } from "../../content/upgrades/upgradePool";
 import { Hud } from "../../ui/Hud";
@@ -52,6 +53,7 @@ export class RunScene implements IScene {
   private stall = new StallSystem();
   private upgradeSys = new UpgradeSystem();
   private evolutionSys = new EvolutionSystem();
+  private tierSys = new TierSystem();
 
   private runState!: RunState;
   private upgradeOverlay = new UpgradeOverlay();
@@ -264,11 +266,13 @@ export class RunScene implements IScene {
       const dy = c.pos.y - py;
       if (dx * dx + dy * dy <= pr * pr) {
         c.alive = false;
-        let goldGain: number = TUNING.worldCoins.goldPerPickup;
+        let goldGain: number =
+          TUNING.worldCoins.goldPerPickup *
+          this.tierSys.currentTier.reward.coinGoldMult;
         if (this.runState.appliedArtifacts.has("golden_thrusters")) {
-          goldGain = Math.round(goldGain * 1.2);
+          goldGain *= 1.2;
         }
-        this.runState.gold += goldGain;
+        this.runState.gold += Math.round(goldGain);
         const sprite = this.coinSprites.get(c.id);
         if (sprite) {
           this.coinContainer.removeChild(sprite);
@@ -302,6 +306,7 @@ export class RunScene implements IScene {
     this.spawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
+    this.tierSys.reset();
     this.upgradeOverlay.hide();
     this.shakeT = 0;
     this.lastDistanceM = 0;
@@ -341,6 +346,7 @@ export class RunScene implements IScene {
     this.spawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
+    this.tierSys.reset();
     this.upgradeOverlay.hide();
     this.shakeT = 0;
     this.lastDistanceM = 0;
@@ -405,11 +411,23 @@ export class RunScene implements IScene {
     }
     this.lastDistanceM = distanceM;
 
+    this.tierSys.update(distanceM);
+    if (this.tierSys.tierJustChanged) {
+      const t = this.tierSys.currentTier;
+      this.toast.show(
+        `ENTERING ${t.shortLabel} — ${t.name}\nScrap x${t.reward.scrapMult}  Gold x${t.reward.coinGoldMult}`,
+        2.0
+      );
+    }
+
+    const tier = this.tierSys.currentTier;
+
     this.spawner.step(
       this.player,
       this.drones,
       this.runState.rng,
       distanceM,
+      tier,
       dt
     );
     this.droneAI.step(this.player, this.drones, this.enemyBullets, dt);
@@ -433,11 +451,11 @@ export class RunScene implements IScene {
     );
     const killsDelta = this.player.kills - killsBefore;
     if (killsDelta > 0) {
-      let scrapGain = killsDelta * TUNING.scrap.perKill;
+      let scrapGain = killsDelta * TUNING.scrap.perKill * tier.reward.scrapMult;
       if (this.runState.appliedArtifacts.has("scrap_magnet")) {
-        scrapGain = Math.round(scrapGain * 1.25);
+        scrapGain *= 1.25;
       }
-      this.runState.scrap += scrapGain;
+      this.runState.scrap += Math.round(scrapGain);
       this.runState.currentXp += killsDelta * TUNING.xp.perKill;
       this.runState.totalKills += killsDelta;
     }
@@ -532,6 +550,7 @@ export class RunScene implements IScene {
       (this.player.pos.x - TUNING.launcher.originX) / 10
     );
     const speed = Math.hypot(this.player.vel.x, this.player.vel.y);
+    const currentTier = this.tierSys.currentTier;
     this.hud.update({
       distanceM,
       speed,
@@ -550,6 +569,13 @@ export class RunScene implements IScene {
       xpMax: this.runState.xpToNextLevel,
       level: this.runState.currentLevel,
       artifacts: this.runState.appliedArtifacts.size,
+      tierLabel: currentTier.shortLabel,
+      tierName: currentTier.name,
+      tierAccent: currentTier.visuals.accentColor,
+      tierScrapMult: currentTier.reward.scrapMult,
+      tierCoinMult: currentTier.reward.coinGoldMult,
+      tierHpMult: currentTier.difficulty.enemyHpMult,
+      tierSpeedMult: currentTier.difficulty.enemySpeedMult,
     });
 
     
@@ -685,13 +711,15 @@ export class RunScene implements IScene {
     const minX = this.player.pos.x - viewW;
     const maxX = this.player.pos.x + viewW + 600;
 
+    const tierVis = this.tierSys.currentTier.visuals;
+
     this.gfxWorld.moveTo(minX, 2000);
     for (let x = minX; x <= maxX; x += 20) {
       this.gfxWorld.lineTo(x, terrain.groundYAt(x));
     }
     this.gfxWorld.lineTo(maxX, 2000);
     this.gfxWorld.closePath();
-    this.gfxWorld.fill({ color: 0x1b2a3a, alpha: 1.0 });
+    this.gfxWorld.fill({ color: tierVis.groundColor, alpha: 1.0 });
 
     const tickStart = Math.floor(minX / 200) * 200;
     for (let tx = tickStart; tx <= maxX; tx += 200) {
@@ -721,7 +749,7 @@ export class RunScene implements IScene {
     for (let x = minX; x <= maxX; x += 20) {
       this.gfxWorld.lineTo(x, terrain.groundYAt(x));
     }
-    this.gfxWorld.stroke({ width: 2, color: 0x2d4a5e, alpha: 0.7 });
+    this.gfxWorld.stroke({ width: 2, color: tierVis.groundStroke, alpha: 0.7 });
 
     const anchorX = TUNING.launcher.originX;
     const anchorY = TUNING.launcher.originY;

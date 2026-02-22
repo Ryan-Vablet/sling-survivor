@@ -3,6 +3,8 @@ import { Container, Graphics, Text } from "pixi.js";
 export class Hud {
   root = new Container();
   private textLeft: Text;
+  private tierBadge: Text;
+  private tierInfo: Text;
   private hpBar = new Graphics();
   private boostBar = new Graphics();
   private xpBar = new Graphics();
@@ -21,6 +23,30 @@ export class Hud {
     this.textLeft.x = 12;
     this.textLeft.y = 10;
 
+    this.tierBadge = new Text({
+      text: "",
+      style: {
+        fill: 0x6688aa,
+        fontSize: 14,
+        fontFamily: "system-ui",
+        fontWeight: "bold",
+      },
+    });
+    this.tierBadge.x = 12;
+    this.tierBadge.y = 70;
+
+    this.tierInfo = new Text({
+      text: "",
+      style: {
+        fill: 0x8899aa,
+        fontSize: 10,
+        fontFamily: "system-ui",
+        lineHeight: 13,
+      },
+    });
+    this.tierInfo.x = 12;
+    this.tierInfo.y = 88;
+
     this.xpLabel = new Text({
       text: "",
       style: { fill: 0x44ff88, fontSize: 11, fontFamily: "system-ui" },
@@ -28,6 +54,8 @@ export class Hud {
 
     this.root.addChild(
       this.textLeft,
+      this.tierBadge,
+      this.tierInfo,
       this.hpBar,
       this.boostBar,
       this.xpBar,
@@ -64,12 +92,26 @@ export class Hud {
     xpMax: number;
     level: number;
     artifacts: number;
+    tierLabel: string;
+    tierName: string;
+    tierAccent: number;
+    tierScrapMult: number;
+    tierCoinMult: number;
+    tierHpMult: number;
+    tierSpeedMult: number;
   }) {
     const artText = data.artifacts > 0 ? `  Art: ${data.artifacts}` : "";
     this.textLeft.text =
       `Round ${data.round}  Rockets: ${data.rocketsLeft}  Gold: ${data.gold}${artText}\n` +
       `Scrap: ${data.scrap}/${data.roundToll}  Dist: ${data.distanceM.toFixed(0)}m  Speed: ${data.speed.toFixed(1)}\n` +
       `Kills: ${data.kills}  Hits: ${data.hits}`;
+
+    this.tierBadge.text = `${data.tierLabel} — ${data.tierName}`;
+    this.tierBadge.style.fill = data.tierAccent;
+
+    this.tierInfo.text =
+      `Scrap x${data.tierScrapMult.toFixed(2)}  Coin x${data.tierCoinMult.toFixed(2)}  ` +
+      `HP x${data.tierHpMult.toFixed(2)}  Spd x${data.tierSpeedMult.toFixed(2)}`;
 
     const hpPct = Math.max(0, Math.min(1, data.hp / data.hpMax));
     const boostPct = Math.max(0, Math.min(1, data.boost / data.boostMax));

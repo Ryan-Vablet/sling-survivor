@@ -21,6 +21,7 @@ export type Drone = {
   vel: Vec2;
   radius: number;
   hp: number;
+  speed: number;
   alive: boolean;
   elite: boolean;
   droneType: DroneType;
