@@ -167,6 +167,11 @@ export class RunScene implements IScene {
 
     const onDbgKey = (e: KeyboardEvent) => {
       if (this.ended || this.runState.paused) return;
+      if (import.meta.env.DEV && e.key === "g") {
+        this.runState.rocketsRemaining = 1;
+        this.endRocket();
+        return;
+      }
       if (!this.player.launched) return;
 
       if (e.key === "u") {
@@ -716,11 +721,11 @@ export class RunScene implements IScene {
             `${upgrades ? `\n\nUpgrades:\n${upgrades}` : ""}` +
             `${evos ? `\n\nEvolutions:\n${evos}` : ""}` +
             `${arts ? `\n\nArtifacts:\n${arts}` : ""}\n\n` +
-            `Click to restart`
+            `Click to continue`
         );
         const finalScore = Math.round(distanceM);
         this.showEndScreenOverlay(() =>
-          this.trySubmitScoreAndThen(finalScore, () => this.resetRun())
+          this.trySubmitScoreAndThen(finalScore, () => this.scenes.switchTo("title"))
         );
       }
     }
