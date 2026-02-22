@@ -21,6 +21,10 @@ export type LeaderboardEntry = {
   gold: number;
   /** JSON string of RunSummaryData for "View summary"; optional for old entries. */
   summaryJson?: string;
+  /** URL of replay in Supabase Storage (optional). */
+  replayUrl?: string;
+  /** Game version from VERSION file (optional). */
+  gameVersion?: string;
 };
 
 /** Backward compat: treat legacy "score" as distance when present. */
@@ -32,6 +36,8 @@ function normRow(row: Record<string, unknown>): LeaderboardEntry {
     scrap: Number(row.scrap ?? 0),
     gold: Number(row.gold ?? 0),
     summaryJson: row.summary_json != null ? String(row.summary_json) : undefined,
+    replayUrl: row.replay_url != null ? String(row.replay_url) : undefined,
+    gameVersion: row.game_version != null ? String(row.game_version) : undefined,
   };
 }
 
@@ -67,7 +73,7 @@ export async function getGlobalLeaderboard(): Promise<LeaderboardEntry[]> {
   try {
     const { data, error } = await supabase
       .from(TABLE)
-      .select("initials, distance, scrap, gold, summary_json")
+      .select("initials, distance, scrap, gold, summary_json, replay_url, game_version")
       .order("distance", { ascending: false })
       .limit(TOP_N);
     if (error) return [];
@@ -100,7 +106,14 @@ export async function isGlobalTop10(distance: number): Promise<boolean> {
 
 function makeEntry(
   initials: string,
-  payload: { distance: number; scrap: number; gold: number; summary?: RunSummaryData }
+  payload: {
+    distance: number;
+    scrap: number;
+    gold: number;
+    summary?: RunSummaryData;
+    replayUrl?: string;
+    gameVersion?: string;
+  }
 ): LeaderboardEntry {
   const summaryJson = payload.summary ? JSON.stringify(payload.summary) : undefined;
   return {
@@ -109,6 +122,8 @@ function makeEntry(
     scrap: Math.max(0, payload.scrap),
     gold: Math.max(0, payload.gold),
     summaryJson,
+    replayUrl: payload.replayUrl,
+    gameVersion: payload.gameVersion,
   };
 }
 
@@ -123,7 +138,14 @@ export function submitToLocal(entry: LeaderboardEntry): void {
 /** Submit entry to global leaderboard (Supabase). No-op if not configured. */
 export async function submitToGlobal(
   initials: string,
-  payload: { distance: number; scrap: number; gold: number; summary?: RunSummaryData }
+  payload: {
+    distance: number;
+    scrap: number;
+    gold: number;
+    summary?: RunSummaryData;
+    replayUrl?: string;
+    gameVersion?: string;
+  }
 ): Promise<void> {
   const entry = makeEntry(initials, payload);
   const supabase = getSupabase();
@@ -136,6 +158,8 @@ export async function submitToGlobal(
       scrap: entry.scrap,
       gold: entry.gold,
       summary_json: entry.summaryJson ?? null,
+      replay_url: entry.replayUrl ?? null,
+      game_version: entry.gameVersion ?? null,
     });
     if (error) {
       console.warn("[Leaderboard] Supabase submit failed:", error.message);
@@ -147,10 +171,17 @@ export async function submitToGlobal(
   }
 }
 
-/** Submit an entry (initials + distance/scrap/gold + optional summary). Writes to both local and global when applicable. */
+/** Submit an entry (initials + distance/scrap/gold + optional summary + optional replayUrl + optional gameVersion). Writes to both local and global when applicable. */
 export async function submitScore(
   initials: string,
-  payload: { distance: number; scrap: number; gold: number; summary?: RunSummaryData },
+  payload: {
+    distance: number;
+    scrap: number;
+    gold: number;
+    summary?: RunSummaryData;
+    replayUrl?: string;
+    gameVersion?: string;
+  },
   options: { toLocal: boolean; toGlobal: boolean }
 ): Promise<void> {
   const entry = makeEntry(initials, payload);

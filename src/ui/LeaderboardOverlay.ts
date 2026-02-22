@@ -17,9 +17,14 @@ export class LeaderboardOverlay {
   private entries: LeaderboardEntry[] = [];
   private mode: LeaderboardMode = "global";
   private onViewSummary: ((summary: RunSummaryData) => void) | null = null;
+  private onPlayReplay: ((replayUrl: string) => void) | null = null;
 
-  show(onViewSummary?: (summary: RunSummaryData) => void) {
+  show(
+    onViewSummary?: (summary: RunSummaryData) => void,
+    onPlayReplay?: (replayUrl: string) => void
+  ) {
     this.onViewSummary = onViewSummary ?? null;
+    this.onPlayReplay = onPlayReplay ?? null;
     if (!this.el) {
       this.el = document.createElement("div");
       this.el.className = "leaderboard-overlay";
@@ -69,18 +74,28 @@ export class LeaderboardOverlay {
       listEl.innerHTML = `<div class="leaderboard-empty">No scores yet. Play to get on the board!</div>`;
       return;
     }
+    const replayUrlForEntry = (e: LeaderboardEntry) =>
+      e.replayUrl ?? getSummaryFromEntry(e)?.replayUrl ?? "";
+
     listEl.innerHTML = this.entries
-      .map(
-        (e, i) =>
-          `<div class="leaderboard-row" data-index="${i}">
+      .map((e, i) => {
+        const replayUrl = replayUrlForEntry(e);
+        const replayBtn =
+          replayUrl && this.onPlayReplay
+            ? `<button type="button" class="leaderboard-replay-btn" data-index="${i}" data-replay-url="${replayUrl.replace(/"/g, "&quot;")}">Replay</button>`
+            : "";
+        return `<div class="leaderboard-row" data-index="${i}">
             <span class="rank">${i + 1}</span>
             <span class="initials">${e.initials}</span>
             <span class="stat">${Math.round(e.distance)} m</span>
             <span class="stat">${e.scrap}</span>
             <span class="stat">${e.gold}</span>
-            <button type="button" class="leaderboard-view-btn" data-index="${i}">View</button>
-          </div>`
-      )
+            <span class="leaderboard-actions">
+              <button type="button" class="leaderboard-view-btn" data-index="${i}">View</button>
+              ${replayBtn}
+            </span>
+          </div>`;
+      })
       .join("");
 
     listEl.querySelectorAll(".leaderboard-view-btn").forEach((btn) => {
@@ -108,6 +123,16 @@ export class LeaderboardOverlay {
           });
           this.hide();
         }
+      });
+    });
+
+    listEl.querySelectorAll(".leaderboard-replay-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const url = (e.currentTarget as HTMLElement).dataset.replayUrl;
+        if (!url || !this.onPlayReplay) return;
+        this.hide();
+        this.onPlayReplay(url);
       });
     });
   }
@@ -172,7 +197,7 @@ export class LeaderboardOverlay {
   }
   .leaderboard-head {
     display: grid;
-    grid-template-columns: 32px 1fr 72px 56px 56px 56px;
+    grid-template-columns: 32px 1fr 72px 56px 56px 120px;
     gap: 8px;
     align-items: center;
     color: #6a8a6a;
@@ -184,7 +209,7 @@ export class LeaderboardOverlay {
   .leaderboard-list { min-height: 200px; }
   .leaderboard-row {
     display: grid;
-    grid-template-columns: 32px 1fr 72px 56px 56px 56px;
+    grid-template-columns: 32px 1fr 72px 56px 56px 120px;
     gap: 8px;
     align-items: center;
     padding: 8px 12px;
@@ -208,6 +233,18 @@ export class LeaderboardOverlay {
     font-family: inherit;
   }
   .leaderboard-view-btn:hover { background: #3a5a3a; }
+  .leaderboard-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .leaderboard-replay-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    background: #1a3a5a;
+    color: #88ccff;
+    border: 1px solid #2a5a8a;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .leaderboard-replay-btn:hover { background: #2a4a6a; }
   .leaderboard-empty {
     color: #668866;
     text-align: center;

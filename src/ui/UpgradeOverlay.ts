@@ -22,6 +22,8 @@ export class UpgradeOverlay {
   private choices: UpgradeChoice[] = [];
   private onPick: ((id: string) => void) | null = null;
   private kbHandler: ((e: KeyboardEvent) => void) | null = null;
+  /** When set, overlay is in replay mode: no pick, highlight this card as chosen. */
+  private pickedIndex: number | null = null;
 
   constructor() {
     this.root.visible = false;
@@ -32,20 +34,24 @@ export class UpgradeOverlay {
     choices: UpgradeChoice[],
     viewW: number,
     viewH: number,
-    onPick: (id: string) => void
+    onPick: (id: string) => void,
+    options?: { pickedIndex?: number }
   ) {
     this.choices = choices;
     this.onPick = onPick;
+    this.pickedIndex = options?.pickedIndex ?? null;
     this.root.visible = true;
     this.build(viewW, viewH);
 
-    this.kbHandler = (e: KeyboardEvent) => {
-      const idx = parseInt(e.key) - 1;
-      if (idx >= 0 && idx < this.choices.length) {
-        this.pick(idx);
-      }
-    };
-    window.addEventListener("keydown", this.kbHandler);
+    if (this.pickedIndex == null) {
+      this.kbHandler = (e: KeyboardEvent) => {
+        const idx = parseInt(e.key) - 1;
+        if (idx >= 0 && idx < this.choices.length) {
+          this.pick(idx);
+        }
+      };
+      window.addEventListener("keydown", this.kbHandler);
+    }
   }
 
   hide() {
@@ -56,6 +62,7 @@ export class UpgradeOverlay {
       this.kbHandler = null;
     }
     this.onPick = null;
+    this.pickedIndex = null;
   }
 
   layout(viewW: number, viewH: number) {
@@ -111,12 +118,17 @@ export class UpgradeOverlay {
   private buildCard(choice: UpgradeChoice, index: number): Container {
     const c = new Container();
     const col = RARITY_COLORS[choice.def.rarity];
+    const isPicked = this.pickedIndex === index;
 
     const bg = new Graphics();
     bg.roundRect(0, 0, CARD_W, CARD_H, 12);
     bg.fill({ color: 0x12122a, alpha: 0.95 });
     bg.roundRect(0, 0, CARD_W, CARD_H, 12);
     bg.stroke({ width: 2, color: col, alpha: 0.8 });
+    if (isPicked) {
+      bg.roundRect(-3, -3, CARD_W + 6, CARD_H + 6, 14);
+      bg.stroke({ width: 4, color: 0xffcc00, alpha: 0.95 });
+    }
     c.addChild(bg);
 
     const bar = new Graphics();
@@ -173,15 +185,17 @@ export class UpgradeOverlay {
       c.addChild(stack);
     }
 
-    c.eventMode = "static";
-    c.cursor = "pointer";
-    c.on("pointerdown", () => this.pick(index));
-    c.on("pointerover", () => {
-      bg.tint = 0xccccff;
-    });
-    c.on("pointerout", () => {
-      bg.tint = 0xffffff;
-    });
+    if (this.pickedIndex == null) {
+      c.eventMode = "static";
+      c.cursor = "pointer";
+      c.on("pointerdown", () => this.pick(index));
+      c.on("pointerover", () => {
+        bg.tint = 0xccccff;
+      });
+      c.on("pointerout", () => {
+        bg.tint = 0xffffff;
+      });
+    }
 
     return c;
   }

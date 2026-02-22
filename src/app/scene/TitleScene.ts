@@ -65,10 +65,16 @@ export class TitleScene implements IScene {
     leaderboardBtn.eventMode = "static";
     leaderboardBtn.cursor = "pointer";
     leaderboardBtn.on("pointerdown", () => {
-      this.leaderboardOverlay.show((summary) => {
-        this.scenes.data.summaryData = summary;
-        this.scenes.switchTo("summary");
-      });
+      this.leaderboardOverlay.show(
+        (summary) => {
+          this.scenes.data.summaryData = summary;
+          this.scenes.switchTo("summary");
+        },
+        (replayUrl) => {
+          this.scenes.data.replayUrl = replayUrl;
+          this.scenes.switchTo("replay");
+        }
+      );
     });
     leaderboardBtn.on("pointerover", () => leaderboardBtn.scale.set(1.04));
     leaderboardBtn.on("pointerout", () => leaderboardBtn.scale.set(1));

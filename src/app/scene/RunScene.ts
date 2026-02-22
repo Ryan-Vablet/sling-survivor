@@ -32,6 +32,9 @@ import {
 } from "../../api/leaderboard";
 import { showInitialsPrompt } from "../../ui/LeaderboardOverlay";
 import type { RunSummaryData } from "../types/runSummary";
+import { ReplayRecorder } from "../replay/ReplayRecorder";
+import { uploadReplay } from "../replay/uploadReplay";
+import { VERSION } from "../../version";
 
 const COIN_FRAMES = 8;
 
@@ -111,16 +114,30 @@ export class RunScene implements IScene {
   private smokeTrail: TrailPoint[] = [];
   private lastTrailTime = 0;
 
+  private replayT = 0;
+  private replayRecorder: ReplayRecorder | null = null;
+  private lastUpgradeDisplayT = 0;
+
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
   }
 
   async enter(): Promise<void> {
-    // Initialize runState and player before any await so fixedUpdate never sees undefined
-    // (SceneManager does not await enter(); ticker can run immediately after we add to stage)
-    this.resetRun();
-
     const app = this.scenes.getApp();
+    // Initialize runState and player before any await so fixedUpdate never sees undefined.
+    const returningState = this.scenes.data.runState as RunState | undefined;
+    if (returningState) {
+      this.scenes.data.runState = undefined;
+      this.runState = returningState;
+      this.replayRecorder = (this.scenes.data.replayRecorder as ReplayRecorder) ?? null;
+      this.replayT = (this.scenes.data.replayT as number) ?? 0;
+      this.scenes.data.replayRecorder = undefined;
+      this.scenes.data.replayT = undefined;
+      this.resetRocket();
+    } else {
+      this.resetRun();
+    }
+
     this.scenes.getDebug().gfx.clear();
 
     app.stage.addChild(this.root);
@@ -150,15 +167,6 @@ export class RunScene implements IScene {
     this.layers.world.addChild(this.gfxThrustFlame);
     await this.loadCoinFrames();
     this.initStars();
-
-    const returningState = this.scenes.data.runState as RunState | undefined;
-    if (returningState) {
-      this.scenes.data.runState = undefined;
-      this.runState = returningState;
-      this.resetRocket();
-    } else {
-      this.resetRun();
-    }
 
     this.resizeHandler = () => {
       const w = app.renderer.width;
@@ -308,6 +316,11 @@ export class RunScene implements IScene {
       const dy = c.pos.y - py;
       if (dx * dx + dy * dy <= pr * pr) {
         c.alive = false;
+        this.replayRecorder?.recordEvent({
+          type: "coin_collect",
+          t: this.replayT,
+          coinId: c.id,
+        });
         let goldGain: number =
           TUNING.worldCoins.goldPerPickup *
           this.tierSys.currentTier.reward.coinGoldMult;
@@ -348,6 +361,7 @@ export class RunScene implements IScene {
   }
 
   private resetRun() {
+    this.replayT = 0;
     this.ended = false;
     this.drones = [];
     this.projectiles = [];
@@ -369,6 +383,7 @@ export class RunScene implements IScene {
     const seedParam = params.get("seed");
     const seed = seedParam ? parseInt(seedParam, 10) : undefined;
     this.runState = new RunState(seed);
+    this.replayRecorder = new ReplayRecorder(this.runState.seed, 1 / 60);
 
     if (this.drag) {
       this.drag.state.isDragging = false;
@@ -436,6 +451,8 @@ export class RunScene implements IScene {
     // shooter cooldowns, enemy bullet lifetimes) advance below this gate.
     if (this.runState.paused) return;
 
+    this.replayT += dt;
+
     if (this.freshReset) {
       this.freshReset = false;
       this.drag.state.released = false;
@@ -444,12 +461,20 @@ export class RunScene implements IScene {
 
     const anchorScreenX = TUNING.launcher.originX + this.layers.world.x;
     const anchorScreenY = TUNING.launcher.originY + this.layers.world.y;
+    const prevLaunched = this.player.launched;
     this.launcher.applyLaunch(
       this.player,
       this.drag,
       anchorScreenX,
       anchorScreenY
     );
+    if (!prevLaunched && this.player.launched) {
+      this.replayRecorder?.recordEvent({
+        type: "launch",
+        t: this.replayT,
+        vel: { x: this.player.vel.x, y: this.player.vel.y },
+      });
+    }
 
     if (!this.player.launched) return;
 
@@ -510,6 +535,13 @@ export class RunScene implements IScene {
     );
     const killsDelta = this.player.kills - killsBefore;
     if (killsDelta > 0) {
+      for (let i = 0; i < killsDelta; i++) {
+        this.replayRecorder?.recordEvent({
+          type: "kill",
+          t: this.replayT,
+          pos: { x: this.player.pos.x, y: this.player.pos.y },
+        });
+      }
       let scrapGain = killsDelta * TUNING.scrap.perKill * tier.reward.scrapMult;
       if (this.runState.appliedArtifacts.has("scrap_magnet")) {
         scrapGain *= 1.25;
@@ -531,6 +563,14 @@ export class RunScene implements IScene {
     if (this.stall.step(this.player, ps, dt)) {
       this.endRocket();
     }
+
+    this.replayRecorder?.recordSnapshot(
+      this.replayT,
+      this.player,
+      this.drones,
+      this.worldCoins,
+      this.runState
+    );
   }
 
   private drainPendingUpgrades(onDone: () => void) {
@@ -553,12 +593,30 @@ export class RunScene implements IScene {
       return;
     }
 
+    this.lastUpgradeDisplayT = this.replayT;
+    this.replayRecorder?.recordEvent({
+      type: "upgrade_display",
+      t: this.replayT,
+      choiceIds: [
+        choices[0].def.id,
+        choices[1].def.id,
+        choices[2].def.id,
+      ] as [string, string, string],
+    });
+
     const app = this.scenes.getApp();
     this.upgradeOverlay.show(
       choices,
       app.renderer.width,
       app.renderer.height,
       (id) => {
+        const index = choices.findIndex((c) => c.def.id === id);
+        this.replayRecorder?.recordEvent({
+          type: "upgrade_pick",
+          t: this.lastUpgradeDisplayT,
+          index,
+          pickedId: id,
+        });
         this.upgradeSys.applyChoice(this.runState, id);
         this.tryEvolve();
         this.drainPendingUpgrades(onDone);
@@ -648,6 +706,10 @@ export class RunScene implements IScene {
     );
 
     if (this.runState.scrap >= this.runState.roundToll) {
+      this.replayRecorder?.recordEvent({
+        type: "round_complete",
+        t: this.replayT,
+      });
       const tollPaid = this.runState.roundToll;
       const excessScrap = this.runState.scrap - tollPaid;
       const goldFromScrap = Math.floor(
@@ -685,6 +747,8 @@ export class RunScene implements IScene {
       );
       this.showEndScreenOverlay(() =>
         this.drainPendingUpgrades(() => {
+          this.scenes.data.replayRecorder = this.replayRecorder ?? undefined;
+          this.scenes.data.replayT = this.replayT;
           this.scenes.data.runState = this.runState;
           this.scenes.switchTo("merchant");
         })
@@ -711,6 +775,10 @@ export class RunScene implements IScene {
           this.drainPendingUpgrades(() => this.resetRocket())
         );
       } else {
+        this.replayRecorder?.recordEvent({
+          type: "game_over",
+          t: this.replayT,
+        });
         const summaryData: RunSummaryData = {
           initials: "???",
           distanceM: this.maxDistanceM,
@@ -722,6 +790,8 @@ export class RunScene implements IScene {
           upgrades: [...this.runState.appliedUpgrades.entries()],
           evolutions: [...this.runState.appliedEvolutions],
           artifacts: [...this.runState.appliedArtifacts],
+          replayPayload: this.replayRecorder?.getReplay(),
+          gameVersion: VERSION,
         };
         this.scenes.data.summaryData = summaryData;
         this.end.setText(
@@ -744,13 +814,20 @@ export class RunScene implements IScene {
       }
       showInitialsPrompt(
         { distance: summaryData.distanceM, scrap: summaryData.scrap, gold: summaryData.gold },
-        (initials) => {
+        async (initials) => {
           summaryData.initials = initials;
+          if (summaryData.replayPayload) {
+            const url = await uploadReplay(summaryData.replayPayload);
+            if (url) summaryData.replayUrl = url;
+            delete summaryData.replayPayload;
+          }
           const payload = {
             distance,
             scrap: summaryData.scrap,
             gold: summaryData.gold,
             summary: summaryData,
+            replayUrl: summaryData.replayUrl,
+            gameVersion: summaryData.gameVersion,
           };
           summaryData.highScoreAchieved = {
             initials,
@@ -758,9 +835,11 @@ export class RunScene implements IScene {
             local: localTop10,
             global: globalTop10,
           };
-          submitScore(initials, payload, { toLocal: localTop10, toGlobal: globalTop10 }).then(
-            () => onDone()
-          );
+          await submitScore(initials, payload, {
+            toLocal: localTop10,
+            toGlobal: globalTop10,
+          });
+          onDone();
         }
       );
     });
