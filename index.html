@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Launcher Survivors</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #0b1020; }
+      #app { width: 100%; height: 100%; overflow: hidden; }
+      canvas { display: block; }
+      /* Simple debug text */
+      .hint {
+        position: fixed;
+        left: 12px;
+        bottom: 12px;
+        color: rgba(255,255,255,0.75);
+        font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        background: rgba(0,0,0,0.35);
+        padding: 8px 10px;
+        border-radius: 10px;
+        user-select: none;
+        pointer-events: none;
+      }
+    </style>
+    <script type="module" crossorigin src="/sling-survivor/assets/index-X4bpyr2v.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div class="hint">
+      Sling to launch, WASD to boost-thrust.<br/>
+      Toggle debug: ` &middot; Force upgrade: U &middot; Force evolve: E &middot; Spawn shooter: P<br/>
+      Pick upgrades: 1/2/3 &middot; Seed: ?seed=12345
+    </div>
+  </body>
+</html>
