@@ -34,6 +34,7 @@ import { showInitialsPrompt } from "../../ui/LeaderboardOverlay";
 import type { RunSummaryData } from "../types/runSummary";
 import { ReplayRecorder } from "../replay/ReplayRecorder";
 import { uploadReplay } from "../replay/uploadReplay";
+import { saveLocalReplay } from "../replay/localReplays";
 import { VERSION } from "../../version";
 
 const COIN_FRAMES = 8;
@@ -793,6 +794,8 @@ export class RunScene implements IScene {
           replayPayload: this.replayRecorder?.getReplay(),
           gameVersion: VERSION,
         };
+        const replay = summaryData.replayPayload;
+        if (replay) saveLocalReplay(replay, { distanceM: this.maxDistanceM });
         this.scenes.data.summaryData = summaryData;
         this.end.setText(
           `GAME OVER\n\nDistance: ${Math.round(this.maxDistanceM)} m\n\nClick to continue`

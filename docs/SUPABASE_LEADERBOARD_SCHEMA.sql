@@ -40,6 +40,17 @@ create policy "Allow public insert leaderboard"
   to anon
   with check (true);
 
--- Storage: create bucket "replays" in Dashboard → Storage → New bucket.
--- Set bucket to public (or use signed URLs) so replay_url links work.
+-- ── Storage bucket for replays (required for replay uploads) ─────────────────
+-- 1) Create the bucket in Dashboard: Storage → New bucket → name "replays" → set Public.
+-- 2) Run the policies below so anon can upload and read. (Without these, uploads get 400/403.)
+drop policy if exists "Allow anon insert replays" on storage.objects;
+create policy "Allow anon insert replays"
+  on storage.objects for insert to anon
+  with check (bucket_id = 'replays');
+
+drop policy if exists "Allow public read replays" on storage.objects;
+create policy "Allow public read replays"
+  on storage.objects for select to anon
+  using (bucket_id = 'replays');
+
 -- Object key pattern: {uuid}.json.gz (gzipped JSON replay).

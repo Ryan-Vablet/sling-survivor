@@ -4,6 +4,8 @@ import type { SceneManager } from "./SceneManager";
 import { assetUrl } from "../../render/assets";
 import { HelpOverlay } from "../../ui/HelpOverlay";
 import { LeaderboardOverlay } from "../../ui/LeaderboardOverlay";
+import { LocalReplaysOverlay } from "../../ui/LocalReplaysOverlay";
+import { setGoldMode, isGoldMode } from "../../ui/GoldModeOverlay";
 
 const COIN_FRAMES = 8;
 const COIN_FRAME_SIZE = 256;
@@ -18,6 +20,7 @@ export class TitleScene implements IScene {
   private coin: AnimatedSprite | null = null;
   private helpOverlay = new HelpOverlay();
   private leaderboardOverlay = new LeaderboardOverlay();
+  private localReplaysOverlay = new LocalReplaysOverlay();
 
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
@@ -50,13 +53,29 @@ export class TitleScene implements IScene {
     const bottomRowY = h - bottomPadding - smallButtonH / 2;
     const helpBtn = this.buildBevelButton("HOW TO PLAY", { blue: true, small: true });
     helpBtn.x = centerX;
-    helpBtn.y = bottomRowY - smallButtonH - bottomButtonGap;
+    helpBtn.y = bottomRowY - 2 * (smallButtonH + bottomButtonGap);
     this.root.addChild(helpBtn);
     helpBtn.eventMode = "static";
     helpBtn.cursor = "pointer";
     helpBtn.on("pointerdown", () => this.helpOverlay.show(w, h));
     helpBtn.on("pointerover", () => helpBtn.scale.set(1.04));
     helpBtn.on("pointerout", () => helpBtn.scale.set(1));
+
+    const myReplaysBtn = this.buildBevelButton("MY REPLAYS", { blue: true, small: true });
+    myReplaysBtn.x = centerX;
+    myReplaysBtn.y = bottomRowY - (smallButtonH + bottomButtonGap);
+    this.root.addChild(myReplaysBtn);
+    myReplaysBtn.eventMode = "static";
+    myReplaysBtn.cursor = "pointer";
+    myReplaysBtn.on("pointerdown", () => {
+      this.localReplaysOverlay.show((replayData) => {
+        this.scenes.data.replayData = replayData;
+        this.scenes.data.replayUrl = undefined;
+        this.scenes.switchTo("replay");
+      });
+    });
+    myReplaysBtn.on("pointerover", () => myReplaysBtn.scale.set(1.04));
+    myReplaysBtn.on("pointerout", () => myReplaysBtn.scale.set(1));
 
     const leaderboardBtn = this.buildBevelButton("LEADERBOARDS", { blue: true, small: true });
     leaderboardBtn.x = centerX;
@@ -104,6 +123,11 @@ export class TitleScene implements IScene {
       this.coin.x = 20;
       this.coin.y = 20;
       this.coin.play();
+      this.coin.eventMode = "static";
+      this.coin.cursor = "pointer";
+      this.coin.on("pointerdown", () => setGoldMode(!isGoldMode()));
+      this.coin.on("pointerover", () => this.coin && (this.coin.scale.set(1.08)));
+      this.coin.on("pointerout", () => this.coin && (this.coin.scale.set(1)));
       this.root.addChild(this.coin);
     });
   }
@@ -111,6 +135,7 @@ export class TitleScene implements IScene {
   exit(): void {
     this.helpOverlay.hide();
     this.leaderboardOverlay.hide();
+    this.localReplaysOverlay.hide();
   }
 
   update(dt: number): void {

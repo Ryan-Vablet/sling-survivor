@@ -34,7 +34,26 @@ export async function uploadReplay(data: ReplayData): Promise<string | null> {
       .upload(path, blob, { contentType: "application/gzip" });
 
     if (error) {
-      console.warn("[Replay] Storage upload failed:", error.message);
+      const errDetail = [
+        error.message,
+        (error as { error?: string }).error && `code: ${(error as { error?: string }).error}`,
+        (error as { statusCode?: string }).statusCode && `status: ${(error as { statusCode?: string }).statusCode}`,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      console.warn("[Replay] Storage upload failed:", errDetail, error);
+      if (
+        errDetail.includes("400") ||
+        errDetail.includes("403") ||
+        errDetail.includes("Invalid") ||
+        errDetail.includes("Bucket") ||
+        errDetail.includes("Access") ||
+        errDetail.includes("policy")
+      ) {
+        console.warn(
+          "[Replay] Tip: Create bucket 'replays' in Dashboard → Storage (Public), then run the storage policies in docs/SUPABASE_LEADERBOARD_SCHEMA.sql"
+        );
+      }
       return null;
     }
 

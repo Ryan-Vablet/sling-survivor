@@ -6,6 +6,7 @@ import { MerchantScene } from "./scene/MerchantScene";
 import { SummaryScene } from "./scene/SummaryScene";
 import { ReplayScene } from "./scene/ReplayScene";
 import { Debug } from "../core/debug/Debug";
+import { initGoldModeOverlay } from "../ui/GoldModeOverlay";
 
 export async function createApp(root: HTMLElement) {
   const app = new Application();
@@ -15,6 +16,8 @@ export async function createApp(root: HTMLElement) {
     antialias: true
   });
   root.appendChild(app.canvas);
+
+  initGoldModeOverlay();
 
   const debug = new Debug();
   const scenes = new SceneManager(app, debug);
