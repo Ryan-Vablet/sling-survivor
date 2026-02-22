@@ -3,7 +3,7 @@ import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
 import { Layers } from "../../render/layers";
 import { Camera2D } from "../../render/Camera2D";
-import { getRocketTexture, getUfoTexture, loadAssets } from "../../render/assets";
+import { assetUrl, getRocketTexture, getUfoTexture, loadAssets } from "../../render/assets";
 import { Keyboard } from "../../core/input/Keyboard";
 import { PointerDrag } from "../../core/input/PointerDrag";
 import { TUNING } from "../../content/tuning";
@@ -215,7 +215,7 @@ export class RunScene implements IScene {
 
   private async loadCoinFrames() {
     try {
-      const sheetTex = await Assets.load<Texture>("/coin_flip_sheet.png");
+      const sheetTex = await Assets.load<Texture>(assetUrl("/coin_flip_sheet.png"));
       const frameW = sheetTex.width / COIN_FRAMES;
       const frameH = sheetTex.height;
       this.coinFrames = [];

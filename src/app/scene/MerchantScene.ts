@@ -19,6 +19,7 @@ import type {
   UpgradeRarity,
 } from "../../content/upgrades/upgradeTypes";
 import type { ArtifactDef } from "../../content/artifacts/artifactTypes";
+import { assetUrl } from "../../render/assets";
 
 const CARD_W = 220;
 const CARD_H = 170;
@@ -78,7 +79,7 @@ export class MerchantScene implements IScene {
     const h = this.viewH;
 
     try {
-      const tex = await Assets.load<Texture>("/merchant_mockup.png");
+      const tex = await Assets.load<Texture>(assetUrl("/merchant_mockup.png"));
       this.bg = new Sprite(tex);
       this.coverFit(w, h);
       this.root.addChildAt(this.bg, 0);
@@ -143,7 +144,7 @@ export class MerchantScene implements IScene {
     const goldContainer = new Container();
 
     try {
-      const sheetTex = await Assets.load<Texture>("/coin_flip_sheet.png");
+      const sheetTex = await Assets.load<Texture>(assetUrl("/coin_flip_sheet.png"));
       const frameW = sheetTex.width / COIN_FRAMES;
       const frameH = sheetTex.height;
       const frames: Texture[] = [];

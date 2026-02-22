@@ -1,5 +1,11 @@
 import { Assets, Texture } from "pixi.js";
 
+/** Resolve asset path with Vite base (e.g. GitHub Pages /sling-survivor/). */
+export function assetUrl(path: string): string {
+  const base = import.meta.env.BASE_URL;
+  return path.startsWith("/") ? base.slice(0, -1) + path : base + path;
+}
+
 /** Cached textures (loaded once in loadAssets). */
 let rocketTexture: Texture | null = null;
 let ufoTexture: Texture | null = null;
@@ -18,12 +24,12 @@ export function getUfoTexture(): Texture | null {
  */
 export async function loadAssets(): Promise<void> {
   try {
-    rocketTexture = await Assets.load<Texture>("/assets/player_rocket.png");
+    rocketTexture = await Assets.load<Texture>(assetUrl("/assets/player_rocket.png"));
   } catch {
     rocketTexture = null;
   }
   try {
-    ufoTexture = await Assets.load<Texture>("/assets/enemies/ufo.png");
+    ufoTexture = await Assets.load<Texture>(assetUrl("/assets/enemies/ufo.png"));
   } catch {
     ufoTexture = null;
   }

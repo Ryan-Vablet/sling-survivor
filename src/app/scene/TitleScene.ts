@@ -1,6 +1,7 @@
 import { AnimatedSprite, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
 import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
+import { assetUrl } from "../../render/assets";
 
 const COIN_FRAMES = 8;
 const COIN_FRAME_SIZE = 256;
@@ -39,14 +40,14 @@ export class TitleScene implements IScene {
     this.btn.on("pointerout", () => {}); // reset handled by update loop
 
     // Load background async — inserts behind button when ready
-    Assets.load<any>("/title_mockup.png").then((texture) => {
+    Assets.load<any>(assetUrl("/title_mockup.png")).then((texture) => {
       this.bg = new Sprite(texture);
       this.coverFit(w, h);
       this.root.addChildAt(this.bg, 0);
     });
 
     // Load coin sprite sheet and create animated sprite
-    Assets.load<Texture>("/coin_flip_sheet.png").then((sheetTex) => {
+    Assets.load<Texture>(assetUrl("/coin_flip_sheet.png")).then((sheetTex) => {
       const frameW = sheetTex.width / COIN_FRAMES;
       const frameH = sheetTex.height;
       const frames: Texture[] = [];
