@@ -32,7 +32,9 @@ export class TitleScene implements IScene {
 
     const centerX = w / 2;
     const launchY = h * 0.56;
-    const buttonGap = 52;
+    const bottomPadding = 12;
+    const smallButtonH = 48;
+    const bottomButtonGap = 28;
 
     this.btn = this.buildLaunchButton();
     this.btn.x = centerX;
@@ -45,9 +47,10 @@ export class TitleScene implements IScene {
     this.btn.on("pointerover", () => this.btn.scale.set(1.06));
     this.btn.on("pointerout", () => {});
 
-    const helpBtn = this.buildBevelButton("How to play", { blue: true, small: true });
+    const bottomRowY = h - bottomPadding - smallButtonH / 2;
+    const helpBtn = this.buildBevelButton("HOW TO PLAY", { blue: true, small: true });
     helpBtn.x = centerX;
-    helpBtn.y = launchY + buttonGap;
+    helpBtn.y = bottomRowY - smallButtonH - bottomButtonGap;
     this.root.addChild(helpBtn);
     helpBtn.eventMode = "static";
     helpBtn.cursor = "pointer";
@@ -55,9 +58,9 @@ export class TitleScene implements IScene {
     helpBtn.on("pointerover", () => helpBtn.scale.set(1.04));
     helpBtn.on("pointerout", () => helpBtn.scale.set(1));
 
-    const leaderboardBtn = this.buildBevelButton("Leaderboards", { blue: true, small: true });
+    const leaderboardBtn = this.buildBevelButton("LEADERBOARDS", { blue: true, small: true });
     leaderboardBtn.x = centerX;
-    leaderboardBtn.y = launchY + buttonGap * 2;
+    leaderboardBtn.y = bottomRowY;
     this.root.addChild(leaderboardBtn);
     leaderboardBtn.eventMode = "static";
     leaderboardBtn.cursor = "pointer";
