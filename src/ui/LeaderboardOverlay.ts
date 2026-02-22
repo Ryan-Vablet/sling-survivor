@@ -64,6 +64,7 @@ export class LeaderboardOverlay {
     } else {
       this.entries = await getGlobalLeaderboard();
     }
+    // Global tab shows only Supabase data; no local fallback
     if (this.entries.length === 0) {
       listEl.innerHTML = `<div class="leaderboard-empty">No scores yet. Play to get on the board!</div>`;
       return;
@@ -158,14 +159,16 @@ export class LeaderboardOverlay {
     text-align: center;
     font-size: 13px;
     font-weight: bold;
-    color: #6a8a6a;
+    color: rgba(255,204,0,0.45);
+    background: rgba(0,30,0,0.25);
     cursor: pointer;
     border: 1px solid #2a4a2a;
   }
-  .leaderboard-tab:hover { color: #aaffaa; }
+  .leaderboard-tab:hover { color: rgba(255,204,0,0.7); background: rgba(0,35,0,0.35); }
   .leaderboard-tab.active {
     color: #ffcc00;
     background: rgba(0,50,0,0.6);
+    text-shadow: 0 0 8px rgba(255,204,0,0.4);
   }
   .leaderboard-head {
     display: grid;

@@ -173,7 +173,7 @@ export class RunScene implements IScene {
 
     const onDbgKey = (e: KeyboardEvent) => {
       if (this.ended || this.runState.paused) return;
-      if (import.meta.env.DEV && e.key === "g") {
+      if (import.meta.env.DEV && e.key.toLowerCase() === "g") {
         this.runState.rocketsRemaining = 1;
         this.endRocket();
         return;
