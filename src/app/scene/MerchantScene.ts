@@ -570,12 +570,13 @@ export class MerchantScene implements IScene {
     this.root.addChild(btn);
   }
 
+  /** Scale background to fit viewport and align so the top is visible. */
   private coverFit(viewW: number, viewH: number) {
     if (!this.bg) return;
     const tex = this.bg.texture;
-    const scale = Math.max(viewW / tex.width, viewH / tex.height);
+    const scale = Math.min(viewW / tex.width, viewH / tex.height);
     this.bg.scale.set(scale);
     this.bg.x = (viewW - tex.width * scale) / 2;
-    this.bg.y = (viewH - tex.height * scale) / 2;
+    this.bg.y = 0;
   }
 }
