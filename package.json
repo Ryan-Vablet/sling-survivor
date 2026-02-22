@@ -12,6 +12,7 @@
     "deploy": "vite build && gh-pages -d dist"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
     "pixi.js": "^8.6.6"
   },
   "devDependencies": {

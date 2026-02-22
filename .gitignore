@@ -2,3 +2,7 @@ node_modules
 dist
 .vscode
 .DS_Store
+
+# Local env (Supabase URL + anon key; keep .env out of repo)
+.env
+.env.local
