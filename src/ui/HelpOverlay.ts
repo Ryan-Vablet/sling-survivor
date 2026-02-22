@@ -1,201 +1,225 @@
-import { Assets, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
-import { assetUrl } from "../render/assets";
+/**
+ * HTML-based help overlay: 80% viewport, sidebar pagination, big image slots.
+ * Image slots use <img> with empty or placeholder src — replace the src in the
+ * markup below (or set element.src in code) and the image will appear in place.
+ */
 
-const PANEL_W = 420;
-const PANEL_H = 520;
-const PADDING = 24;
-const PLACEHOLDER_W = 160;
-const PLACEHOLDER_H = 90;
-const COIN_FRAMES = 8;
+const SECTIONS: { id: string; title: string; body: string }[] = [
+  {
+    id: "launch",
+    title: "Launch",
+    body:
+      "Pull back on the launcher and release to launch your rocket. The further you pull, the more power.",
+  },
+  {
+    id: "thrust",
+    title: "Thrust",
+    body:
+      "Use WASD or Arrow keys to thrust and steer. Your boost bar depletes while thrusting and refills when you don't.",
+  },
+  {
+    id: "coins",
+    title: "Collect coins",
+    body:
+      "Fly through gold coins in the world to earn currency. Spend it at the merchant between rounds.",
+  },
+  {
+    id: "enemies",
+    title: "Fight enemies",
+    body:
+      "UFOs chase and shoot at you. Destroy them with your weapon to gain scrap and XP. Level up to choose upgrades.",
+  },
+  {
+    id: "survive",
+    title: "Survive",
+    body:
+      "Reach the round toll in scrap before you run out of rockets. Pay the toll at the merchant to advance. Good luck!",
+  },
+];
 
 export class HelpOverlay {
-  root = new Container();
+  private el: HTMLElement | null = null;
+  private currentPage = 0;
 
-  private backdrop = new Graphics();
-  private panel = new Container();
-  private closeBtn: Container | null = null;
+  show(_viewW: number, _viewH: number) {
+    if (!this.el) {
+      this.el = document.createElement("div");
+      this.el.className = "help-overlay";
+      this.el.innerHTML = this.markup();
+      document.body.appendChild(this.el);
 
-  constructor() {
-    this.root.visible = false;
-    this.root.addChild(this.backdrop, this.panel);
-  }
+      const back = this.el.querySelector(".help-overlay-backdrop");
+      const closeBtn = this.el.querySelector(".help-overlay-close");
+      const sidebarLinks = this.el.querySelectorAll(".help-sidebar a");
 
-  show(viewW: number, viewH: number) {
-    this.root.visible = true;
-    this.build(viewW, viewH);
+      back?.addEventListener("click", () => this.hide());
+      closeBtn?.addEventListener("click", () => this.hide());
+      this.el.querySelector(".help-overlay-panel")?.addEventListener("click", (e) => e.stopPropagation());
+
+      sidebarLinks.forEach((link, i) => {
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          this.showPage(i);
+        });
+      });
+    }
+
+    this.el.style.display = "block";
+    this.showPage(0);
   }
 
   hide() {
-    this.root.visible = false;
-    this.panel.removeChildren();
-    this.closeBtn = null;
+    if (this.el) this.el.style.display = "none";
   }
 
-  private build(viewW: number, viewH: number) {
-    this.panel.removeChildren();
+  private showPage(index: number) {
+    this.currentPage = index;
+    if (!this.el) return;
 
-    this.backdrop.clear();
-    this.backdrop.rect(0, 0, viewW, viewH);
-    this.backdrop.fill({ color: 0x000000, alpha: 0.7 });
-    this.backdrop.eventMode = "static";
-    this.backdrop.on("pointerdown", () => this.hide());
-
-    const panelX = (viewW - PANEL_W) / 2;
-    const panelY = (viewH - PANEL_H) / 2;
-
-    const panelBg = new Graphics();
-    panelBg.roundRect(0, 0, PANEL_W, PANEL_H, 16);
-    panelBg.fill({ color: 0x12122a, alpha: 0.98 });
-    panelBg.roundRect(0, 0, PANEL_W, PANEL_H, 16);
-    panelBg.stroke({ width: 2, color: 0x4488aa, alpha: 0.6 });
-    panelBg.x = panelX;
-    panelBg.y = panelY;
-    panelBg.eventMode = "static";
-    this.panel.addChild(panelBg);
-
-    const title = new Text({
-      text: "How to Play",
-      style: {
-        fill: 0xffffff,
-        fontSize: 24,
-        fontFamily: "system-ui, sans-serif",
-        fontWeight: "bold",
-      },
+    this.el.querySelectorAll(".help-sidebar a").forEach((a, i) => {
+      a.classList.toggle("active", i === index);
     });
-    title.anchor.set(0.5, 0);
-    title.x = panelX + PANEL_W / 2;
-    title.y = panelY + PADDING;
-    this.panel.addChild(title);
-
-    let y = panelY + PADDING + 36;
-
-    const bodyStyle = {
-      fill: 0xccccdd,
-      fontSize: 14,
-      fontFamily: "system-ui, sans-serif",
-      wordWrap: true,
-      wordWrapWidth: PANEL_W - PADDING * 2,
-      lineHeight: 20,
-    };
-
-    const placeholderUrl = (text: string) =>
-      `https://placehold.co/${PLACEHOLDER_W}x${PLACEHOLDER_H}/2a2a4a/8899aa?text=${encodeURIComponent(text)}`;
-
-    const addPlaceholder = (imgY: number, text: string) => {
-      Assets.load<Texture>(placeholderUrl(text)).then((tex) => {
-        const img = new Sprite(tex);
-        img.x = panelX + PADDING;
-        img.y = imgY;
-        img.width = PLACEHOLDER_W;
-        img.height = PLACEHOLDER_H;
-        this.panel.addChild(img);
-      }).catch(() => {});
-    };
-
-    const section = (heading: string, body: string, placeholderText?: string) => {
-      const h = new Text({
-        text: heading,
-        style: {
-          fill: 0x88aacc,
-          fontSize: 15,
-          fontFamily: "system-ui, sans-serif",
-          fontWeight: "bold",
-        },
-      });
-      h.x = panelX + PADDING;
-      h.y = y;
-      this.panel.addChild(h);
-      y += 22;
-
-      if (placeholderText) {
-        addPlaceholder(y, placeholderText);
-        y += PLACEHOLDER_H + 10;
-      }
-
-      const t = new Text({ text: body, style: bodyStyle });
-      t.x = panelX + PADDING;
-      t.y = y;
-      this.panel.addChild(t);
-      y += t.height + 18;
-    };
-
-    section(
-      "Launch",
-      "Pull back on the launcher and release to launch your rocket. The further you pull, the more power.",
-      "Pull & release"
-    );
-    section(
-      "Thrust",
-      "Use WASD or Arrow keys to thrust and steer. Your boost bar depletes while thrusting and refills when you don't.",
-      "WASD thrust"
-    );
-    section(
-      "Collect coins",
-      "Fly through gold coins in the world to earn currency. Spend it at the merchant between rounds.",
-    );
-    Assets.load<Texture>(assetUrl("/coin_flip_sheet.png")).then((sheetTex) => {
-      const frameW = sheetTex.width / COIN_FRAMES;
-      const frameH = sheetTex.height;
-      const frame = new Texture({
-        source: sheetTex.source,
-        frame: new Rectangle(0, 0, frameW, frameH),
-      });
-      const coin = new Sprite(frame);
-      coin.width = 32;
-      coin.height = 32;
-      coin.x = panelX + PANEL_W - PADDING - 40;
-      coin.y = y - 42;
-      this.panel.addChild(coin);
-    }).catch(() => {});
-
-    section(
-      "Fight enemies",
-      "UFOs chase and shoot at you. Destroy them with your weapon to gain scrap and XP. Level up to choose upgrades.",
-      "UFOs"
-    );
-    section(
-      "Survive",
-      "Reach the round toll in scrap before you run out of rockets. Pay the toll at the merchant to advance. Good luck!",
-    );
-
-    const closeBtn = this.buildCloseButton(panelX + PANEL_W / 2, panelY + PANEL_H - 52);
-    this.panel.addChild(closeBtn);
-    this.closeBtn = closeBtn;
+    this.el.querySelectorAll(".help-page").forEach((p, i) => {
+      (p as HTMLElement).style.display = i === index ? "block" : "none";
+    });
   }
 
-  private buildCloseButton(cx: number, cy: number): Container {
-    const c = new Container();
-    const W = 120;
-    const H = 40;
-    const R = 10;
+  private markup(): string {
+    const widthPct = 80;
+    const sidebarW = 160;
 
-    const bg = new Graphics();
-    bg.roundRect(-W / 2, -H / 2, W, H, R);
-    bg.fill({ color: 0x4488aa, alpha: 0.9 });
-    bg.roundRect(-W / 2, -H / 2, W, H, R);
-    bg.stroke({ width: 1, color: 0x66aacc, alpha: 0.8 });
-    c.addChild(bg);
-
-    const label = new Text({
-      text: "Got it",
-      style: {
-        fill: 0xffffff,
-        fontSize: 16,
-        fontFamily: "system-ui, sans-serif",
-        fontWeight: "bold",
-      },
-    });
-    label.anchor.set(0.5);
-    c.addChild(label);
-
-    c.x = cx;
-    c.y = cy;
-    c.eventMode = "static";
-    c.cursor = "pointer";
-    c.on("pointerdown", () => this.hide());
-    c.on("pointerover", () => { bg.tint = 0xbbddff; });
-    c.on("pointerout", () => { bg.tint = 0xffffff; });
-
-    return c;
+    return `
+<style>
+  .help-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.75);
+  }
+  .help-overlay-backdrop {
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
+  }
+  .help-overlay-panel {
+    position: relative;
+    width: ${widthPct}vw;
+    max-width: 100%;
+    height: ${widthPct}vh;
+    max-height: 100%;
+    display: flex;
+    background: #12122a;
+    border-radius: 16px;
+    border: 2px solid rgba(68,136,170,0.6);
+    box-shadow: 0 0 60px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+  .help-sidebar {
+    width: ${sidebarW}px;
+    flex-shrink: 0;
+    background: rgba(0,0,0,0.3);
+    padding: 20px 0;
+  }
+  .help-sidebar a {
+    display: block;
+    padding: 12px 20px;
+    color: #8899aa;
+    text-decoration: none;
+    font: 14px/1.3 system-ui, sans-serif;
+    border-left: 3px solid transparent;
+  }
+  .help-sidebar a:hover { color: #aaccdd; }
+  .help-sidebar a.active {
+    color: #fff;
+    background: rgba(68,136,170,0.25);
+    border-left-color: #4488aa;
+  }
+  .help-main {
+    flex: 1;
+    overflow: auto;
+    padding: 24px 32px;
+  }
+  .help-page { display: none; }
+  .help-page h2 {
+    margin: 0 0 16px 0;
+    color: #88aacc;
+    font: bold 20px/1.3 system-ui, sans-serif;
+  }
+  .help-image-wrap {
+    width: 100%;
+    max-width: 560px;
+    aspect-ratio: 16/10;
+    margin-bottom: 20px;
+    background: #1a1a2e;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .help-image-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .help-image-wrap img:not([src]),
+  .help-image-wrap img[src=""] {
+    display: none;
+  }
+  .help-image-wrap:has(img[src]:not([src=""])) .help-image-placeholder {
+    display: none;
+  }
+  .help-image-wrap .help-image-placeholder {
+    color: #556677;
+    font: 14px system-ui, sans-serif;
+    padding: 24px;
+    text-align: center;
+  }
+  .help-body {
+    color: #ccccdd;
+    font: 14px/1.5 system-ui, sans-serif;
+    max-width: 520px;
+  }
+  .help-overlay-close {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    padding: 10px 24px;
+    background: #4488aa;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font: bold 14px system-ui, sans-serif;
+    cursor: pointer;
+    z-index: 1;
+  }
+  .help-overlay-close:hover { background: #55aacc; }
+</style>
+<div class="help-overlay-backdrop" aria-label="Close"></div>
+<div class="help-overlay-panel">
+  <button type="button" class="help-overlay-close">Got it</button>
+  <nav class="help-sidebar">
+    ${SECTIONS.map((s, i) => `<a href="#" class="${i === 0 ? "active" : ""}" data-page="${i}">${s.title}</a>`).join("")}
+  </nav>
+  <main class="help-main">
+    ${SECTIONS.map(
+      (s, i) => `
+    <section class="help-page" data-page="${i}" style="display: ${i === 0 ? "block" : "none"}">
+      <h2>${s.title}</h2>
+      <div class="help-image-wrap">
+        <!-- Replace src with your image URL when ready (e.g. /assets/help/${s.id}.png) -->
+        <img src="" alt="${s.title}" data-help-image="${s.id}" />
+        <span class="help-image-placeholder">Image: set img src for “${s.id}”</span>
+      </div>
+      <p class="help-body">${s.body}</p>
+    </section>
+    `
+    ).join("")}
+  </main>
+</div>
+`;
   }
 }

@@ -25,6 +25,8 @@ import { Hud } from "../../ui/Hud";
 import { EndScreen } from "../../ui/EndScreen";
 import { UpgradeOverlay } from "../../ui/UpgradeOverlay";
 import { Toast } from "../../ui/Toast";
+import { isTop10, submitScore } from "../../api/leaderboard";
+import { showInitialsPrompt } from "../../ui/LeaderboardOverlay";
 
 const COIN_FRAMES = 8;
 
@@ -716,9 +718,24 @@ export class RunScene implements IScene {
             `${arts ? `\n\nArtifacts:\n${arts}` : ""}\n\n` +
             `Click to restart`
         );
-        this.showEndScreenOverlay(() => this.resetRun());
+        const finalScore = Math.round(distanceM);
+        this.showEndScreenOverlay(() =>
+          this.trySubmitScoreAndThen(finalScore, () => this.resetRun())
+        );
       }
     }
+  }
+
+  private trySubmitScoreAndThen(score: number, onDone: () => void) {
+    isTop10(score).then((top10) => {
+      if (!top10) {
+        onDone();
+        return;
+      }
+      showInitialsPrompt(score, (initials) => {
+        submitScore(initials, score).then(() => onDone());
+      });
+    });
   }
 
   private showEndScreenOverlay(onContinue: () => void) {
