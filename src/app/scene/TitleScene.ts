@@ -31,7 +31,7 @@ export class TitleScene implements IScene {
     const h = app.renderer.height;
 
     const centerX = w / 2;
-    const launchY = h * 0.56;
+    const launchY = h * 0.62;
     const bottomPadding = 12;
     const smallButtonH = 48;
     const bottomButtonGap = 28;

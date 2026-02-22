@@ -62,14 +62,30 @@ export class HelpOverlay {
           this.showPage(i);
         });
       });
+
+      const nextBtn = this.el.querySelector(".help-next-btn");
+      nextBtn?.addEventListener("click", (e) => {
+        e.preventDefault();
+        const next = (this.currentPage + 1) % SECTIONS.length;
+        this.showPage(next);
+      });
     }
 
-    this.el.style.display = "block";
+    this.el.style.display = "flex";
     this.showPage(0);
   }
 
   hide() {
     if (this.el) this.el.style.display = "none";
+  }
+
+  private updateNextArrow() {
+    if (!this.el) return;
+    const nextBtn = this.el.querySelector(".help-next-btn") as HTMLElement;
+    if (!nextBtn) return;
+    const isLast = this.currentPage === SECTIONS.length - 1;
+    nextBtn.style.opacity = isLast ? "0.4" : "1";
+    nextBtn.style.pointerEvents = isLast ? "none" : "auto";
   }
 
   private showPage(index: number) {
@@ -82,6 +98,7 @@ export class HelpOverlay {
     this.el.querySelectorAll(".help-page").forEach((p, i) => {
       (p as HTMLElement).style.display = i === index ? "block" : "none";
     });
+    this.updateNextArrow();
   }
 
   private markup(): string {
@@ -111,11 +128,42 @@ export class HelpOverlay {
     height: ${widthPct}vh;
     max-height: 100%;
     display: flex;
+    flex-direction: column;
     background: #12122a;
     border-radius: 16px;
     border: 2px solid rgba(68,136,170,0.6);
     box-shadow: 0 0 60px rgba(0,0,0,0.6);
     overflow: hidden;
+    margin: auto;
+  }
+  .help-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: rgba(0,0,0,0.35);
+    border-bottom: 1px solid rgba(68,136,170,0.4);
+  }
+  .help-header-title {
+    color: #fff;
+    font: bold 18px system-ui, sans-serif;
+    letter-spacing: 1px;
+  }
+  .help-overlay-close {
+    padding: 8px 20px;
+    background: #4488aa;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font: bold 14px system-ui, sans-serif;
+    cursor: pointer;
+  }
+  .help-overlay-close:hover { background: #55aacc; }
+  .help-panel-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
   }
   .help-sidebar {
     width: ${sidebarW}px;
@@ -137,11 +185,44 @@ export class HelpOverlay {
     background: rgba(68,136,170,0.25);
     border-left-color: #4488aa;
   }
+  .help-main-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+  }
   .help-main {
     flex: 1;
     overflow: auto;
-    padding: 24px 32px;
+    padding: 24px 32px 60px 32px;
+    scrollbar-width: thin;
+    scrollbar-color: #4488aa #1a1a2e;
   }
+  .help-main::-webkit-scrollbar { width: 10px; }
+  .help-main::-webkit-scrollbar-track { background: #1a1a2e; }
+  .help-main::-webkit-scrollbar-thumb { background: #4488aa; border-radius: 5px; }
+  .help-main::-webkit-scrollbar-thumb:hover { background: #55aacc; }
+  .help-next-btn {
+    position: absolute;
+    bottom: 20px;
+    right: 24px;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: none;
+    background: rgba(68,136,170,0.5);
+    color: #fff;
+    border-radius: 12px;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+  }
+  .help-next-btn:hover { background: #4488aa; }
   .help-page { display: none; }
   .help-page h2 {
     margin: 0 0 16px 0;
@@ -200,25 +281,32 @@ export class HelpOverlay {
 </style>
 <div class="help-overlay-backdrop" aria-label="Close"></div>
 <div class="help-overlay-panel">
-  <button type="button" class="help-overlay-close">Got it</button>
-  <nav class="help-sidebar">
+  <header class="help-header">
+    <span class="help-header-title">How to Play</span>
+    <button type="button" class="help-overlay-close">Got it</button>
+  </header>
+  <div class="help-panel-body">
+    <nav class="help-sidebar">
     ${SECTIONS.map((s, i) => `<a href="#" class="${i === 0 ? "active" : ""}" data-page="${i}">${s.title}</a>`).join("")}
   </nav>
-  <main class="help-main">
-    ${SECTIONS.map(
-      (s, i) => `
-    <section class="help-page" data-page="${i}" style="display: ${i === 0 ? "block" : "none"}">
-      <h2>${s.title}</h2>
-      <div class="help-image-wrap">
-        <!-- Replace src with your image URL when ready (e.g. /assets/help/${s.id}.png) -->
-        <img src="" alt="${s.title}" data-help-image="${s.id}" />
-        <span class="help-image-placeholder">Image: set img src for “${s.id}”</span>
-      </div>
-      <p class="help-body">${s.body}</p>
-    </section>
-    `
-    ).join("")}
-  </main>
+    <div class="help-main-wrap">
+      <main class="help-main">
+        ${SECTIONS.map(
+          (s, i) => `
+        <section class="help-page" data-page="${i}" style="display: ${i === 0 ? "block" : "none"}">
+          <h2>${s.title}</h2>
+          <div class="help-image-wrap">
+            <img src="" alt="${s.title}" data-help-image="${s.id}" />
+            <span class="help-image-placeholder">Image: set img src for "${s.id}"</span>
+          </div>
+          <p class="help-body">${s.body}</p>
+        </section>
+        `
+        ).join("")}
+      </main>
+      <button type="button" class="help-next-btn" aria-label="Next page">→</button>
+    </div>
+  </div>
 </div>
 `;
   }
