@@ -50,7 +50,22 @@ export const TUNING = {
     levelScale: 1.35,
     perKm: 50,
     perKill: 25,
-    coinPerKill: 8,
+  },
+  scrap: {
+    perKill: 10,
+  },
+  gold: {
+    scrapToGoldRate: 0.5,
+    rocketBonus: 15,
+  },
+  worldCoins: {
+    goldPerPickup: 5,
+    spawnIntervalMin: 800,
+    spawnIntervalMax: 1200,
+    clusterMin: 3,
+    clusterMax: 6,
+    pickupRadius: 32,
+    coinSize: 24,
   },
   elite: {
     spawnEveryN: 5,

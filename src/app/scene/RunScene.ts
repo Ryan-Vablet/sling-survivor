@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { AnimatedSprite, Assets, Container, Graphics, Rectangle, Texture } from "pixi.js";
 import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
 import { Layers } from "../../render/layers";
@@ -7,7 +7,7 @@ import { loadAssets } from "../../render/assets";
 import { Keyboard } from "../../core/input/Keyboard";
 import { PointerDrag } from "../../core/input/PointerDrag";
 import { TUNING } from "../../content/tuning";
-import type { Drone, Player, Projectile, EnemyBullet } from "../../sim/entities";
+import type { Drone, Player, Projectile, EnemyBullet, WorldCoin } from "../../sim/entities";
 import { PhysicsWorld } from "../../sim/world/PhysicsWorld";
 import { BoostThrustSystem } from "../../sim/systems/BoostThrustSystem";
 import { LauncherSystem } from "../../sim/systems/LauncherSystem";
@@ -24,6 +24,8 @@ import { Hud } from "../../ui/Hud";
 import { EndScreen } from "../../ui/EndScreen";
 import { UpgradeOverlay } from "../../ui/UpgradeOverlay";
 import { Toast } from "../../ui/Toast";
+
+const COIN_FRAMES = 8;
 
 type Star = { x: number; y: number; a: number; r: number; p: number };
 
@@ -66,6 +68,13 @@ export class RunScene implements IScene {
   private end = new EndScreen();
   private ended = false;
 
+  private worldCoins: WorldCoin[] = [];
+  private coinSprites = new Map<number, AnimatedSprite>();
+  private coinFrames: Texture[] = [];
+  private coinContainer = new Container();
+  private nextCoinId = 1;
+  private nextCoinClusterX = 0;
+
   private stars: Star[] = [];
   private resizeHandler: (() => void) | null = null;
   private endClickHandler: (() => void) | null = null;
@@ -74,6 +83,7 @@ export class RunScene implements IScene {
   private shakeT = 0;
   private shakeIntensity = 0;
   private lastDistanceM = 0;
+  private coinAnimT = 0;
 
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
@@ -87,6 +97,7 @@ export class RunScene implements IScene {
     this.root.addChild(this.layers.root);
 
     this.layers.world.addChild(this.gfxWorld);
+    this.layers.world.addChild(this.coinContainer);
     this.layers.world.addChild(this.gfxDebug);
     this.layers.ui.addChild(this.hud.root);
     this.layers.ui.addChild(this.upgradeOverlay.root);
@@ -98,6 +109,7 @@ export class RunScene implements IScene {
     this.drag = new PointerDrag(app.canvas);
 
     await loadAssets();
+    await this.loadCoinFrames();
     this.initStars();
     this.resetRun();
 
@@ -162,11 +174,119 @@ export class RunScene implements IScene {
     }
   }
 
+  private async loadCoinFrames() {
+    try {
+      const sheetTex = await Assets.load<Texture>("/coin_flip_sheet.png");
+      const frameW = sheetTex.width / COIN_FRAMES;
+      const frameH = sheetTex.height;
+      this.coinFrames = [];
+      for (let i = 0; i < COIN_FRAMES; i++) {
+        this.coinFrames.push(
+          new Texture({
+            source: sheetTex.source,
+            frame: new Rectangle(i * frameW, 0, frameW, frameH),
+          })
+        );
+      }
+    } catch {
+      this.coinFrames = [];
+    }
+  }
+
+  private clearWorldCoins() {
+    for (const sprite of this.coinSprites.values()) {
+      this.coinContainer.removeChild(sprite);
+      sprite.destroy();
+    }
+    this.coinSprites.clear();
+    this.worldCoins = [];
+    this.nextCoinId = 1;
+    this.nextCoinClusterX = TUNING.launcher.originX + 500;
+  }
+
+  private spawnCoinsAhead() {
+    const viewAhead = this.player.pos.x + 1200;
+    const wc = TUNING.worldCoins;
+    const rng = this.runState.rng;
+
+    while (this.nextCoinClusterX < viewAhead) {
+      const baseX = this.nextCoinClusterX;
+      const groundY = this.world.terrain.groundYAt(baseX);
+      const baseY = groundY - 120 - rng.nextFloat() * 130;
+      const count = wc.clusterMin + rng.nextInt(wc.clusterMax - wc.clusterMin + 1);
+
+      for (let i = 0; i < count; i++) {
+        const x = baseX + (i - count / 2) * 45;
+        const y = baseY + Math.sin(i * 0.8) * 30;
+
+        const coin: WorldCoin = {
+          id: this.nextCoinId++,
+          pos: { x, y },
+          alive: true,
+          bobPhase: rng.nextFloat() * Math.PI * 2,
+        };
+        this.worldCoins.push(coin);
+
+        if (this.coinFrames.length > 0) {
+          const sprite = new AnimatedSprite(this.coinFrames);
+          sprite.width = wc.coinSize;
+          sprite.height = wc.coinSize;
+          sprite.anchor.set(0.5);
+          sprite.animationSpeed = 0.15;
+          sprite.gotoAndPlay(rng.nextInt(COIN_FRAMES));
+          this.coinContainer.addChild(sprite);
+          this.coinSprites.set(coin.id, sprite);
+        }
+      }
+
+      this.nextCoinClusterX +=
+        wc.spawnIntervalMin +
+        rng.nextInt(wc.spawnIntervalMax - wc.spawnIntervalMin);
+    }
+  }
+
+  private collectCoins() {
+    const px = this.player.pos.x;
+    const py = this.player.pos.y;
+    const pr = this.player.radius + TUNING.worldCoins.pickupRadius;
+
+    for (const c of this.worldCoins) {
+      if (!c.alive) continue;
+      const dx = c.pos.x - px;
+      const dy = c.pos.y - py;
+      if (dx * dx + dy * dy <= pr * pr) {
+        c.alive = false;
+        this.runState.gold += TUNING.worldCoins.goldPerPickup;
+        const sprite = this.coinSprites.get(c.id);
+        if (sprite) {
+          this.coinContainer.removeChild(sprite);
+          sprite.destroy();
+          this.coinSprites.delete(c.id);
+        }
+      }
+    }
+
+    // Remove coins far behind the player
+    for (let i = this.worldCoins.length - 1; i >= 0; i--) {
+      const c = this.worldCoins[i];
+      if (!c.alive || c.pos.x < this.player.pos.x - 800) {
+        const sprite = this.coinSprites.get(c.id);
+        if (sprite) {
+          this.coinContainer.removeChild(sprite);
+          sprite.destroy();
+          this.coinSprites.delete(c.id);
+        }
+        this.worldCoins.splice(i, 1);
+      }
+    }
+  }
+
   private resetRun() {
     this.ended = false;
     this.drones = [];
     this.projectiles = [];
     this.enemyBullets = [];
+    this.clearWorldCoins();
     this.spawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
@@ -205,6 +325,7 @@ export class RunScene implements IScene {
     this.drones = [];
     this.projectiles = [];
     this.enemyBullets = [];
+    this.clearWorldCoins();
     this.spawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
@@ -300,10 +421,13 @@ export class RunScene implements IScene {
     );
     const killsDelta = this.player.kills - killsBefore;
     if (killsDelta > 0) {
-      this.runState.coins += killsDelta * TUNING.xp.coinPerKill;
+      this.runState.scrap += killsDelta * TUNING.scrap.perKill;
       this.runState.currentXp += killsDelta * TUNING.xp.perKill;
       this.runState.totalKills += killsDelta;
     }
+
+    this.spawnCoinsAhead();
+    this.collectCoins();
 
     const levelBefore = this.runState.currentLevel;
     this.upgradeSys.checkLevelUp(this.runState);
@@ -375,6 +499,15 @@ export class RunScene implements IScene {
     }
 
     this.toast.update(dt);
+    this.coinAnimT += dt;
+    for (const c of this.worldCoins) {
+      if (!c.alive) continue;
+      const sprite = this.coinSprites.get(c.id);
+      if (sprite) {
+        sprite.x = c.pos.x;
+        sprite.y = c.pos.y + Math.sin(this.coinAnimT * 2 + c.bobPhase) * 6;
+      }
+    }
     this.drawWorld(app.renderer.width, app.renderer.height);
 
     const ps = this.runState.playerStats;
@@ -394,8 +527,9 @@ export class RunScene implements IScene {
       boostMax: ps.boostMax,
       round: this.runState.currentRound,
       rocketsLeft: this.runState.rocketsRemaining,
-      coins: this.runState.coins,
-      roundToll: this.runState.roundCoinToll,
+      scrap: this.runState.scrap,
+      roundToll: this.runState.roundToll,
+      gold: this.runState.gold,
       xp: this.runState.currentXp,
       xpMax: this.runState.xpToNextLevel,
       level: this.runState.currentLevel,
@@ -411,12 +545,21 @@ export class RunScene implements IScene {
       (this.player.pos.x - TUNING.launcher.originX) / 10
     );
 
-    if (this.runState.coins >= this.runState.roundCoinToll) {
-      const tollPaid = this.runState.roundCoinToll;
-      this.runState.coins -= this.runState.roundCoinToll;
+    if (this.runState.scrap >= this.runState.roundToll) {
+      const tollPaid = this.runState.roundToll;
+      const excessScrap = this.runState.scrap - tollPaid;
+      const goldFromScrap = Math.floor(
+        excessScrap * TUNING.gold.scrapToGoldRate
+      );
+      const goldFromRockets =
+        this.runState.rocketsRemaining * TUNING.gold.rocketBonus;
+      const goldEarned = goldFromScrap + goldFromRockets;
+      this.runState.gold += goldEarned;
+
+      this.runState.scrap = 0;
       this.runState.currentRound++;
       this.runState.rocketsRemaining = TUNING.rounds.startingRockets;
-      this.runState.roundCoinToll = Math.round(
+      this.runState.roundToll = Math.round(
         tollPaid * TUNING.rounds.tollScale
       );
 
@@ -428,9 +571,10 @@ export class RunScene implements IScene {
 
       this.end.setText(
         `ROUND ${this.runState.currentRound - 1} COMPLETE!\n\n` +
-          `Toll paid: ${tollPaid} coins\n` +
-          `Coins remaining: ${this.runState.coins}\n` +
-          `Next toll: ${this.runState.roundCoinToll}\n` +
+          `Toll paid: ${tollPaid} scrap\n` +
+          `Gold earned: +${goldEarned}\n` +
+          `Gold total: ${this.runState.gold}\n` +
+          `Next toll: ${this.runState.roundToll}\n` +
           `Rockets: ${this.runState.rocketsRemaining}` +
           `${pendingText}\n\n` +
           `Click to continue`
@@ -452,7 +596,7 @@ export class RunScene implements IScene {
           `ROCKET LOST\n\n` +
             `Dist: ${distanceM.toFixed(0)}m  Kills: ${this.player.kills}\n` +
             `Rockets remaining: ${this.runState.rocketsRemaining}\n` +
-            `Coins: ${this.runState.coins} / ${this.runState.roundCoinToll}` +
+            `Scrap: ${this.runState.scrap} / ${this.runState.roundToll}` +
             `${pendingText}\n\n` +
             `Click to relaunch`
         );
@@ -472,7 +616,7 @@ export class RunScene implements IScene {
             `Round: ${this.runState.currentRound}\n` +
             `Total Kills: ${this.runState.totalKills}\n` +
             `Level: ${this.runState.currentLevel}\n` +
-            `Coins: ${this.runState.coins}` +
+            `Gold: ${this.runState.gold}` +
             `${upgrades ? `\n\nUpgrades:\n${upgrades}` : ""}` +
             `${evos ? `\n\nEvolutions:\n${evos}` : ""}\n\n` +
             `Click to restart`

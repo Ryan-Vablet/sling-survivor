@@ -50,21 +50,24 @@ Each **run** consists of multiple **rounds**. Each round gives the player a limi
 
 | Concept | Description |
 |---------|-------------|
-| Rocket | One slingshot launch. Earn XP + coins during flight. |
+| Rocket | One slingshot launch. Earn XP + scrap + gold during flight. |
 | XP | Gained from distance + kills. Triggers upgrade picks on level-up. |
-| Coins | Gained from kills. Used to pay the round toll. |
-| Round Toll | Pay coins to advance to the next round. Rockets reset. |
+| Scrap | Gained from kills (10/kill). Pays round tolls. Resets on round clear. |
+| Gold | Earned from excess scrap + world coin pickups. Banked for future merchants. |
+| Round Toll | Pay scrap to advance to the next round. Rockets reset. |
 | Game Over | Rockets reach 0 before toll is paid. |
 
 Upgrades and evolutions persist across rockets within the same run.
 
 ### XP & Leveling
 
-XP is earned primarily from kills (25 XP / kill) with a small background trickle from distance (50 XP / km). When enough XP is accumulated, the player levels up and 3 upgrade cards appear. XP scaling: each level requires 1.35x more XP than the previous.
+XP is earned primarily from kills (25 XP / kill) with a small background trickle from distance (50 XP / km). When enough XP is accumulated, the player levels up and 3 upgrade cards appear between rockets. XP scaling: each level requires 1.35x more XP than the previous.
 
-### Coins & Toll
+### Scrap, Gold & Toll
 
-Kills grant coins (8 / kill). Coins accumulate across rockets. When a rocket ends, if coins >= toll, the toll is paid, the round advances, and rockets reset. If not, a rocket is consumed. Toll scales 1.7x per round.
+Kills grant scrap (10 / kill). Scrap accumulates across rockets and pays the round toll. On round clear, excess scrap converts to gold at 50%, plus a bonus of 15 gold per remaining rocket. Scrap resets to 0. Toll scales 1.7x per round.
+
+Gold is also earned by flying through world coin pickups (5 gold each). Gold persists across rounds and is reserved for future merchants/shops.
 
 ### Available Upgrades
 

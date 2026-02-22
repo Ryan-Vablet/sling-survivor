@@ -35,8 +35,9 @@ export class RunState {
 
   currentRound = 1;
   rocketsRemaining: number;
-  coins = 0;
-  roundCoinToll: number;
+  scrap = 0;
+  gold = 0;
+  roundToll: number;
 
   currentXp = 0;
   xpToNextLevel: number;
@@ -57,7 +58,7 @@ export class RunState {
     this.seed = seed ?? Date.now();
     this.rng = new RNG(this.seed);
     this.rocketsRemaining = TUNING.rounds.startingRockets;
-    this.roundCoinToll = TUNING.rounds.baseToll;
+    this.roundToll = TUNING.rounds.baseToll;
     this.xpToNextLevel = TUNING.xp.baseToLevel;
     this.recomputeStats();
   }

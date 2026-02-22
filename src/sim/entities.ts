@@ -51,3 +51,10 @@ export type EnemyBullet = {
   alive: boolean;
   lifeT: number;
 };
+
+export type WorldCoin = {
+  id: number;
+  pos: Vec2;
+  alive: boolean;
+  bobPhase: number;
+};

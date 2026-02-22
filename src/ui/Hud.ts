@@ -11,7 +11,12 @@ export class Hud {
   constructor() {
     this.textLeft = new Text({
       text: "",
-      style: { fill: 0xffffff, fontSize: 13, fontFamily: "system-ui", lineHeight: 17 },
+      style: {
+        fill: 0xffffff,
+        fontSize: 13,
+        fontFamily: "system-ui",
+        lineHeight: 17,
+      },
     });
     this.textLeft.x = 12;
     this.textLeft.y = 10;
@@ -21,7 +26,13 @@ export class Hud {
       style: { fill: 0x44ff88, fontSize: 11, fontFamily: "system-ui" },
     });
 
-    this.root.addChild(this.textLeft, this.hpBar, this.boostBar, this.xpBar, this.xpLabel);
+    this.root.addChild(
+      this.textLeft,
+      this.hpBar,
+      this.boostBar,
+      this.xpBar,
+      this.xpLabel
+    );
   }
 
   resize(w: number) {
@@ -46,15 +57,16 @@ export class Hud {
     boostMax: number;
     round: number;
     rocketsLeft: number;
-    coins: number;
+    scrap: number;
     roundToll: number;
+    gold: number;
     xp: number;
     xpMax: number;
     level: number;
   }) {
     this.textLeft.text =
-      `Round ${data.round}  Rockets: ${data.rocketsLeft}  Coins: ${data.coins}/${data.roundToll}\n` +
-      `Dist: ${data.distanceM.toFixed(0)}m  Speed: ${data.speed.toFixed(1)}\n` +
+      `Round ${data.round}  Rockets: ${data.rocketsLeft}  Gold: ${data.gold}\n` +
+      `Scrap: ${data.scrap}/${data.roundToll}  Dist: ${data.distanceM.toFixed(0)}m  Speed: ${data.speed.toFixed(1)}\n` +
       `Kills: ${data.kills}  Hits: ${data.hits}`;
 
     const hpPct = Math.max(0, Math.min(1, data.hp / data.hpMax));
