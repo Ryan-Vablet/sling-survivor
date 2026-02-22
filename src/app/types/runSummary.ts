@@ -13,4 +13,11 @@ export type RunSummaryData = {
   upgrades: [string, number][]; // id, count
   evolutions: string[];
   artifacts: string[];
+  /** Set when they just achieved a top-10 (local and/or global); shown with highlight on summary. */
+  highScoreAchieved?: {
+    initials: string;
+    distance: number;
+    local: boolean;
+    global: boolean;
+  };
 };

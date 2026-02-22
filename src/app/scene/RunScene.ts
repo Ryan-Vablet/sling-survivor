@@ -25,7 +25,11 @@ import { Hud } from "../../ui/Hud";
 import { EndScreen } from "../../ui/EndScreen";
 import { UpgradeOverlay } from "../../ui/UpgradeOverlay";
 import { Toast } from "../../ui/Toast";
-import { isTop10, submitScore } from "../../api/leaderboard";
+import {
+  isLocalTop10,
+  isGlobalTop10,
+  submitScore,
+} from "../../api/leaderboard";
 import { showInitialsPrompt } from "../../ui/LeaderboardOverlay";
 import type { RunSummaryData } from "../types/runSummary";
 
@@ -732,8 +736,9 @@ export class RunScene implements IScene {
 
   private trySubmitScoreAndThen(summaryData: RunSummaryData, onDone: () => void) {
     const distance = Math.round(summaryData.distanceM);
-    isTop10(distance).then((top10) => {
-      if (!top10) {
+    const localTop10 = isLocalTop10(distance);
+    isGlobalTop10(distance).then((globalTop10) => {
+      if (!localTop10 && !globalTop10) {
         onDone();
         return;
       }
@@ -741,12 +746,21 @@ export class RunScene implements IScene {
         { distance: summaryData.distanceM, scrap: summaryData.scrap, gold: summaryData.gold },
         (initials) => {
           summaryData.initials = initials;
-          submitScore(initials, {
-            distance: Math.round(summaryData.distanceM),
+          const payload = {
+            distance,
             scrap: summaryData.scrap,
             gold: summaryData.gold,
             summary: summaryData,
-          }).then(() => onDone());
+          };
+          summaryData.highScoreAchieved = {
+            initials,
+            distance,
+            local: localTop10,
+            global: globalTop10,
+          };
+          submitScore(initials, payload, { toLocal: localTop10, toGlobal: globalTop10 }).then(
+            () => onDone()
+          );
         }
       );
     });

@@ -54,111 +54,108 @@ function sortByDistance(entries: LeaderboardEntry[]) {
   return entries.slice().sort((a, b) => b.distance - a.distance);
 }
 
-/** Fetch leaderboard: Supabase first (when configured), then localStorage. */
-export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
-  const supabase = getSupabase();
-
-  if (supabase) {
-    try {
-      console.log("[Leaderboard] Fetching from Supabase…");
-      const { data, error } = await supabase
-        .from(TABLE)
-        .select("initials, distance, scrap, gold, summary_json")
-        .order("distance", { ascending: false })
-        .limit(TOP_N);
-
-      if (error) {
-        console.warn("[Leaderboard] Supabase fetch failed:", error.message, "→ using localStorage");
-        const local = getLocalEntries();
-        const result = sortByDistance(local).slice(0, TOP_N);
-        console.log("[Leaderboard] Loaded", result.length, "entries from localStorage");
-        return result;
-      }
-
-      const entries = (data ?? []).map((row: Record<string, unknown>) => normRow(row));
-      console.log("[Leaderboard] Loaded", entries.length, "entries from Supabase (persisted in DB)");
-      return entries;
-    } catch (e) {
-      console.warn("[Leaderboard] Supabase error:", e, "→ using localStorage");
-      const local = getLocalEntries();
-      const result = sortByDistance(local).slice(0, TOP_N);
-      console.log("[Leaderboard] Loaded", result.length, "entries from localStorage");
-      return result;
-    }
-  }
-
-  if (!isSupabaseConfigured()) {
-    console.log("[Leaderboard] Supabase not configured (.env missing) → using localStorage");
-  }
+/** Local leaderboard only (this device). */
+export function getLocalLeaderboard(): LeaderboardEntry[] {
   const local = getLocalEntries();
-  const result = sortByDistance(local).slice(0, TOP_N);
-  console.log("[Leaderboard] Loaded", result.length, "entries from localStorage");
-  return result;
+  return sortByDistance(local).slice(0, TOP_N);
 }
 
-/** Submit an entry (initials + distance/scrap/gold + optional summary). */
-export async function submitScore(
+/** Global leaderboard (Supabase). Returns [] if not configured or on error. */
+export async function getGlobalLeaderboard(): Promise<LeaderboardEntry[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select("initials, distance, scrap, gold, summary_json")
+      .order("distance", { ascending: false })
+      .limit(TOP_N);
+    if (error) return [];
+    return (data ?? []).map((row: Record<string, unknown>) => normRow(row));
+  } catch {
+    return [];
+  }
+}
+
+/** Fetch leaderboard: Supabase first (when configured), then localStorage. */
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+  const list = await getGlobalLeaderboard();
+  if (list.length > 0) return list;
+  return getLocalLeaderboard();
+}
+
+/** True if this distance would be in the local top 10. */
+export function isLocalTop10(distance: number): boolean {
+  const list = getLocalLeaderboard();
+  if (list.length < TOP_N) return true;
+  return distance > (list[list.length - 1]?.distance ?? -1);
+}
+
+/** True if this distance would be in the global top 10. */
+export async function isGlobalTop10(distance: number): Promise<boolean> {
+  const list = await getGlobalLeaderboard();
+  if (list.length < TOP_N) return true;
+  return distance > (list[list.length - 1]?.distance ?? -1);
+}
+
+function makeEntry(
   initials: string,
   payload: { distance: number; scrap: number; gold: number; summary?: RunSummaryData }
-): Promise<void> {
+): LeaderboardEntry {
   const summaryJson = payload.summary ? JSON.stringify(payload.summary) : undefined;
-  const entry: LeaderboardEntry = {
+  return {
     initials: String(initials).toUpperCase().slice(0, 3) || "???",
     distance: Math.max(0, payload.distance),
     scrap: Math.max(0, payload.scrap),
     gold: Math.max(0, payload.gold),
     summaryJson,
   };
+}
 
-  const supabase = getSupabase();
-
-  if (supabase) {
-    try {
-      console.log("[Leaderboard] Submitting to Supabase…", { initials: entry.initials, distance: entry.distance });
-      const { error } = await supabase.from(TABLE).insert({
-        initials: entry.initials,
-        score: entry.distance,
-        distance: entry.distance,
-        scrap: entry.scrap,
-        gold: entry.gold,
-        summary_json: summaryJson ?? null,
-      });
-
-      if (error) {
-        console.warn("[Leaderboard] Supabase submit failed:", error.message, "→ saving to localStorage");
-        const entries = getLocalEntries();
-        entries.push(entry);
-        setLocalEntries(sortByDistance(entries).slice(0, TOP_N));
-        console.log("[Leaderboard] Score saved to localStorage");
-        return;
-      }
-
-      console.log("[Leaderboard] Score saved to Supabase (persisted in DB)");
-      return;
-    } catch (e) {
-      console.warn("[Leaderboard] Supabase error on submit:", e, "→ saving to localStorage");
-      const entries = getLocalEntries();
-      entries.push(entry);
-      setLocalEntries(sortByDistance(entries).slice(0, TOP_N));
-      console.log("[Leaderboard] Score saved to localStorage");
-      return;
-    }
-  }
-
-  if (!isSupabaseConfigured()) {
-    console.log("[Leaderboard] Supabase not configured (.env missing) → saving to localStorage");
-  }
+/** Add entry to local leaderboard (this device). */
+export function submitToLocal(entry: LeaderboardEntry): void {
   const entries = getLocalEntries();
   entries.push(entry);
   setLocalEntries(sortByDistance(entries).slice(0, TOP_N));
-  console.log("[Leaderboard] Score saved to localStorage");
+  console.log("[Leaderboard] Score saved to local");
 }
 
-/** True if this distance would be in the top 10. */
-export async function isTop10(distance: number): Promise<boolean> {
-  const list = await getLeaderboard();
-  if (list.length < TOP_N) return true;
-  return distance > (list[list.length - 1]?.distance ?? -1);
+/** Submit entry to global leaderboard (Supabase). No-op if not configured. */
+export async function submitToGlobal(
+  initials: string,
+  payload: { distance: number; scrap: number; gold: number; summary?: RunSummaryData }
+): Promise<void> {
+  const entry = makeEntry(initials, payload);
+  const supabase = getSupabase();
+  if (!supabase) return;
+  try {
+    const { error } = await supabase.from(TABLE).insert({
+      initials: entry.initials,
+      score: entry.distance,
+      distance: entry.distance,
+      scrap: entry.scrap,
+      gold: entry.gold,
+      summary_json: entry.summaryJson ?? null,
+    });
+    if (error) {
+      console.warn("[Leaderboard] Supabase submit failed:", error.message);
+      return;
+    }
+    console.log("[Leaderboard] Score saved to global (Supabase)");
+  } catch (e) {
+    console.warn("[Leaderboard] Supabase error on submit:", e);
+  }
+}
+
+/** Submit an entry (initials + distance/scrap/gold + optional summary). Writes to both local and global when applicable. */
+export async function submitScore(
+  initials: string,
+  payload: { distance: number; scrap: number; gold: number; summary?: RunSummaryData },
+  options: { toLocal: boolean; toGlobal: boolean }
+): Promise<void> {
+  const entry = makeEntry(initials, payload);
+  if (options.toLocal) submitToLocal(entry);
+  if (options.toGlobal) await submitToGlobal(initials, payload);
 }
 
 /** Parse summary from a leaderboard entry for SummaryScene. */

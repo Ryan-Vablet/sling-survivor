@@ -1,13 +1,21 @@
-import { getLeaderboard, getSummaryFromEntry, type LeaderboardEntry } from "../api/leaderboard";
+import {
+  getLocalLeaderboard,
+  getGlobalLeaderboard,
+  getSummaryFromEntry,
+  type LeaderboardEntry,
+} from "../api/leaderboard";
 import type { RunSummaryData } from "../app/types/runSummary";
+
+type LeaderboardMode = "global" | "local";
 
 /**
  * DOM overlay: arcade-style leaderboard (green/amber on dark).
- * Shows Distance, Scrap, Gold; "View summary" opens Summary scene with that run's data.
+ * Toggle Global / Local. Shows Distance, Scrap, Gold; "View summary" opens Summary scene.
  */
 export class LeaderboardOverlay {
   private el: HTMLElement | null = null;
   private entries: LeaderboardEntry[] = [];
+  private mode: LeaderboardMode = "global";
   private onViewSummary: ((summary: RunSummaryData) => void) | null = null;
 
   show(onViewSummary?: (summary: RunSummaryData) => void) {
@@ -21,8 +29,25 @@ export class LeaderboardOverlay {
       this.el.querySelector(".leaderboard-overlay-backdrop")?.addEventListener("click", () => this.hide());
       this.el.querySelector(".leaderboard-overlay-close")?.addEventListener("click", () => this.hide());
       this.el.querySelector(".leaderboard-panel")?.addEventListener("click", (e) => e.stopPropagation());
+
+      this.el.querySelector(".leaderboard-tab-global")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.setMode("global");
+      });
+      this.el.querySelector(".leaderboard-tab-local")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.setMode("local");
+      });
     }
     this.el.style.display = "flex";
+    this.refresh();
+  }
+
+  private setMode(mode: LeaderboardMode) {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.el?.querySelectorAll(".leaderboard-tab").forEach((t) => t.classList.remove("active"));
+    this.el?.querySelector(`.leaderboard-tab-${mode}`)?.classList.add("active");
     this.refresh();
   }
 
@@ -34,7 +59,11 @@ export class LeaderboardOverlay {
     if (!this.el) return;
     const listEl = this.el.querySelector(".leaderboard-list");
     if (!listEl) return;
-    this.entries = await getLeaderboard();
+    if (this.mode === "local") {
+      this.entries = getLocalLeaderboard();
+    } else {
+      this.entries = await getGlobalLeaderboard();
+    }
     if (this.entries.length === 0) {
       listEl.innerHTML = `<div class="leaderboard-empty">No scores yet. Play to get on the board!</div>`;
       return;
@@ -112,8 +141,31 @@ export class LeaderboardOverlay {
     font-size: 22px;
     font-weight: bold;
     letter-spacing: 4px;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
     text-shadow: 0 0 10px rgba(255,204,0,0.5);
+  }
+  .leaderboard-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0,20,0,0.5);
+  }
+  .leaderboard-tab {
+    flex: 1;
+    padding: 8px 16px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+    color: #6a8a6a;
+    cursor: pointer;
+    border: 1px solid #2a4a2a;
+  }
+  .leaderboard-tab:hover { color: #aaffaa; }
+  .leaderboard-tab.active {
+    color: #ffcc00;
+    background: rgba(0,50,0,0.6);
   }
   .leaderboard-head {
     display: grid;
@@ -175,6 +227,10 @@ export class LeaderboardOverlay {
 <div class="leaderboard-overlay-backdrop" aria-label="Close"></div>
 <div class="leaderboard-panel">
   <div class="leaderboard-title">★ HIGH SCORES ★</div>
+  <div class="leaderboard-tabs">
+    <button type="button" class="leaderboard-tab leaderboard-tab-global active">Global</button>
+    <button type="button" class="leaderboard-tab leaderboard-tab-local">Local</button>
+  </div>
   <div class="leaderboard-head"><span>#</span><span>INITIALS</span><span>DIST</span><span>SCRAP</span><span>GOLD</span><span></span></div>
   <div class="leaderboard-list">Loading…</div>
   <button type="button" class="leaderboard-overlay-close">Close</button>

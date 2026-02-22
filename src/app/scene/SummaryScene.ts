@@ -16,8 +16,10 @@ export class SummaryScene implements IScene {
   private panel!: Graphics;
   private titleText!: Text;
   private statsText!: Text;
+  private highScoreText: Text | null = null;
   private continueText!: Text;
   private clickHandler: (() => void) | null = null;
+  private elapsed = 0;
 
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
@@ -37,7 +39,7 @@ export class SummaryScene implements IScene {
     this.root.addChild(this.panel);
 
     this.titleText = new Text({
-      text: `${summary.initials} — Run Summary`,
+      text: "Run Summary",
       style: { fill: 0xffcc88, fontSize: 24, fontFamily: "system-ui", fontWeight: "bold" },
     });
     this.titleText.anchor.set(0.5, 0);
@@ -70,6 +72,30 @@ export class SummaryScene implements IScene {
     });
     this.statsText.anchor.set(0.5, 0);
     this.root.addChild(this.statsText);
+
+    const hsa = summary.highScoreAchieved;
+    if (hsa) {
+      const label =
+        hsa.local && hsa.global
+          ? "New Local & Global High Score"
+          : hsa.local
+            ? "New Local High Score"
+            : "New Global High Score";
+      this.highScoreText = new Text({
+        text: `${label} — ${hsa.initials} · ${hsa.distance.toLocaleString()} m`,
+        style: {
+          fill: 0xffdd88,
+          fontSize: 15,
+          fontFamily: "system-ui",
+          fontWeight: "bold",
+          dropShadow: { color: 0x886622, blur: 8, distance: 0, alpha: 0.9 },
+        },
+      });
+      this.highScoreText.anchor.set(0.5, 0);
+      this.root.addChild(this.highScoreText);
+    } else {
+      this.highScoreText = null;
+    }
 
     this.continueText = new Text({
       text: "Click to continue",
@@ -105,7 +131,14 @@ export class SummaryScene implements IScene {
     app.canvas.addEventListener("pointerdown", this.clickHandler);
   }
 
-  update(_dt: number): void {}
+  update(dt: number): void {
+    this.elapsed += dt;
+    if (this.highScoreText) {
+      const pulse = 0.94 + 0.06 * Math.sin(this.elapsed * 3.5);
+      this.highScoreText.scale.set(pulse);
+      this.highScoreText.alpha = 0.88 + 0.12 * Math.sin(this.elapsed * 2.2);
+    }
+  }
 
   exit(): void {
     const app = this.scenes.getApp();
@@ -151,6 +184,10 @@ export class SummaryScene implements IScene {
     this.statsText.x = cx;
     this.statsText.y = topY + 44;
 
+    if (this.highScoreText) {
+      this.highScoreText.x = cx;
+      this.highScoreText.y = this.panel.y + panelH - pad - 56;
+    }
     this.continueText.x = cx;
     this.continueText.y = this.panel.y + panelH - pad - 28;
   }
