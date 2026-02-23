@@ -14,7 +14,8 @@ import { LauncherSystem } from "../../sim/systems/LauncherSystem";
 import { EnemySpawner } from "../../sim/systems/EnemySpawner";
 import { DroneAI } from "../../sim/systems/DroneAI";
 import { WeaponSystem } from "../../sim/systems/WeaponSystem";
-import { CollisionSystem } from "../../sim/systems/CollisionSystem";
+import { CollisionSystem, type DroneDeathEvent } from "../../sim/systems/CollisionSystem";
+import { FxManager } from "../../fx/FxManager";
 import { StallSystem } from "../../sim/systems/StallSystem";
 import { UpgradeSystem } from "../../sim/systems/UpgradeSystem";
 import { EvolutionSystem } from "../../sim/systems/EvolutionSystem";
@@ -91,6 +92,8 @@ export class RunScene implements IScene {
   private rocketSprite: Sprite | null = null;
   private droneContainer = new Container();
   private droneSprites = new Map<number, Sprite>();
+  private deathEventsThisFrame: DroneDeathEvent[] = [];
+  private fxManager = new FxManager();
   private hud = new Hud();
   private end = new EndScreen();
   private ended = false;
@@ -147,6 +150,7 @@ export class RunScene implements IScene {
     this.layers.world.addChild(this.gfxWorld);
     this.layers.world.addChild(this.coinContainer);
     this.layers.world.addChild(this.droneContainer);
+    this.layers.world.addChild(this.fxManager.getContainer());
     this.layers.world.addChild(this.gfxDebug);
     this.layers.ui.addChild(this.hud.root);
     this.layers.ui.addChild(this.upgradeOverlay.root);
@@ -371,6 +375,8 @@ export class RunScene implements IScene {
     this.lastTrailTime = 0;
     this.clearWorldCoins();
     this.clearDroneSprites();
+    this.fxManager.clear();
+    this.deathEventsThisFrame = [];
     this.spawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
@@ -416,6 +422,8 @@ export class RunScene implements IScene {
     this.lastTrailTime = 0;
     this.clearWorldCoins();
     this.clearDroneSprites();
+    this.fxManager.clear();
+    this.deathEventsThisFrame = [];
     this.spawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
@@ -526,7 +534,7 @@ export class RunScene implements IScene {
     );
 
     const killsBefore = this.player.kills;
-    this.collide.step(
+    const { deaths } = this.collide.step(
       this.player,
       this.drones,
       this.projectiles,
@@ -534,6 +542,7 @@ export class RunScene implements IScene {
       ps,
       dt
     );
+    this.deathEventsThisFrame = deaths;
     const killsDelta = this.player.kills - killsBefore;
     if (killsDelta > 0) {
       for (let i = 0; i < killsDelta; i++) {
@@ -653,6 +662,7 @@ export class RunScene implements IScene {
     }
 
     this.toast.update(dt);
+    this.fxManager.update(dt, this.runState.paused);
     this.coinAnimT += dt;
     for (const c of this.worldCoins) {
       if (!c.alive) continue;
@@ -985,14 +995,25 @@ export class RunScene implements IScene {
     for (const [id, sprite] of this.droneSprites) {
       if (!aliveDroneIds.has(id)) toRemove.push(id);
     }
+    const app = this.scenes.getApp();
     for (const id of toRemove) {
       const sprite = this.droneSprites.get(id);
+      const death = this.deathEventsThisFrame.find((e) => e.id === id);
+      if (sprite && death) {
+        this.fxManager.spawnEnemyDeathFx(
+          app.renderer,
+          sprite,
+          death.pos,
+          death.vel
+        );
+      }
       if (sprite) {
         this.droneContainer.removeChild(sprite);
         sprite.destroy();
         this.droneSprites.delete(id);
       }
     }
+    this.deathEventsThisFrame = [];
 
     // Enemy bullets
     for (const eb of this.enemyBullets) {

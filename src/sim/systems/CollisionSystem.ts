@@ -2,6 +2,14 @@ import { TUNING } from "../../content/tuning";
 import type { Drone, Player, Projectile, EnemyBullet } from "../entities";
 import type { DerivedPlayerStats } from "../runtime/RunState";
 
+export type DroneDeathEvent = {
+  id: number;
+  pos: { x: number; y: number };
+  vel: { x: number; y: number };
+  elite: boolean;
+  droneType: Drone["droneType"];
+};
+
 export class CollisionSystem {
   step(
     player: Player,
@@ -10,7 +18,8 @@ export class CollisionSystem {
     enemyBullets: EnemyBullet[],
     stats: DerivedPlayerStats,
     dt: number
-  ) {
+  ): { deaths: DroneDeathEvent[] } {
+    const deaths: DroneDeathEvent[] = [];
     // Player projectiles vs drones
     for (const p of projectiles) {
       if (!p.alive) continue;
@@ -30,6 +39,13 @@ export class CollisionSystem {
           d.hp -= p.damage;
           if (d.hp <= 0) {
             d.alive = false;
+            deaths.push({
+              id: d.id,
+              pos: { x: d.pos.x, y: d.pos.y },
+              vel: { x: d.vel.x, y: d.vel.y },
+              elite: d.elite,
+              droneType: d.droneType,
+            });
             player.kills += 1;
           }
           if (p.piercing && p.pierceLeft > 0) {
@@ -95,5 +111,6 @@ export class CollisionSystem {
     for (let i = enemyBullets.length - 1; i >= 0; i--) {
       if (!enemyBullets[i].alive) enemyBullets.splice(i, 1);
     }
+    return { deaths };
   }
 }

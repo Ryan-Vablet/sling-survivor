@@ -85,6 +85,17 @@ export const TUNING = {
     maxAliveGrowth: 0.005,
     maxAliveCap: 15
   },
+  fx: {
+    shatterGridW: 5,
+    shatterGridH: 3,
+    shatterLifetimeSec: 0.75,
+    shatterSpeedMin: 120,
+    shatterSpeedMax: 260,
+    shatterDrag: 2.0,
+    shatterGravity: 40,
+    flashLifetimeSec: 0.18,
+    ringLifetimeSec: 0.3,
+  },
   shooter: {
     preferDistMin: 350,
     preferDistMax: 550,
