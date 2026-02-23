@@ -31,7 +31,7 @@ import {
   submitScore,
 } from "../../api/leaderboard";
 import { showInitialsPrompt } from "../../ui/LeaderboardOverlay";
-import type { RunSummaryData } from "../types/runSummary";
+import { computeRunScore, type RunSummaryData } from "../types/runSummary";
 import { ReplayRecorder } from "../replay/ReplayRecorder";
 import { uploadReplay } from "../replay/uploadReplay";
 import { saveLocalReplay } from "../replay/localReplays";
@@ -423,7 +423,7 @@ export class RunScene implements IScene {
     this.upgradeOverlay.hide();
     this.shakeT = 0;
     this.lastDistanceM = 0;
-    this.maxDistanceM = 0;
+    // Keep maxDistanceM across rockets so run summary reflects best distance in run
 
     if (this.drag) {
       this.drag.state.isDragging = false;
@@ -547,7 +547,9 @@ export class RunScene implements IScene {
       if (this.runState.appliedArtifacts.has("scrap_magnet")) {
         scrapGain *= 1.25;
       }
-      this.runState.scrap += Math.round(scrapGain);
+      const scrapEarned = Math.round(scrapGain);
+      this.runState.scrap += scrapEarned;
+      this.runState.totalScrap += scrapEarned;
       this.runState.currentXp += killsDelta * TUNING.xp.perKill;
       this.runState.totalKills += killsDelta;
     }
@@ -783,7 +785,7 @@ export class RunScene implements IScene {
         const summaryData: RunSummaryData = {
           initials: "???",
           distanceM: this.maxDistanceM,
-          scrap: this.runState.scrap,
+          scrap: this.runState.totalScrap,
           gold: this.runState.gold,
           round: this.runState.currentRound,
           totalKills: this.runState.totalKills,
@@ -794,6 +796,7 @@ export class RunScene implements IScene {
           replayPayload: this.replayRecorder?.getReplay(),
           gameVersion: VERSION,
         };
+        summaryData.score = computeRunScore(summaryData);
         const replay = summaryData.replayPayload;
         if (replay) saveLocalReplay(replay, { distanceM: this.maxDistanceM });
         this.scenes.data.summaryData = summaryData;

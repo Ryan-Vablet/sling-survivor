@@ -1,7 +1,7 @@
 import { Assets, Container, Sprite, Text, Graphics } from "pixi.js";
 import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
-import type { RunSummaryData } from "../types/runSummary";
+import { computeRunScore, type RunSummaryData } from "../types/runSummary";
 import { assetUrl } from "../../render/assets";
 
 /**
@@ -45,7 +45,9 @@ export class SummaryScene implements IScene {
     this.titleText.anchor.set(0.5, 0);
     this.root.addChild(this.titleText);
 
+    const score = summary.score ?? computeRunScore(summary);
     const lines: string[] = [
+      `Score: ${score.toLocaleString()}`,
       `Distance: ${Math.round(summary.distanceM)} m`,
       `Scrap earned: ${summary.scrap}`,
       `Gold earned: ${summary.gold}`,

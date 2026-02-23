@@ -37,6 +37,8 @@ export class RunState {
   rocketsRemaining: number;
   scrap = 0;
   gold = 0;
+  /** Total scrap earned across all rounds this run (never reset until new run). */
+  totalScrap = 0;
   roundToll: number;
 
   currentXp = 0;

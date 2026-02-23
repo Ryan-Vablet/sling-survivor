@@ -1,8 +1,9 @@
 /**
  * HTML-based help overlay: 80% viewport, sidebar pagination, big image slots.
- * Image slots use <img> with empty or placeholder src — replace the src in the
- * markup below (or set element.src in code) and the image will appear in place.
+ * Each section's image loads from public/assets/{id}.webp (e.g. survive.webp).
  */
+
+import { assetUrl } from "../render/assets";
 
 const SECTIONS: { id: string; title: string; body: string }[] = [
   {
@@ -296,7 +297,7 @@ export class HelpOverlay {
         <section class="help-page" data-page="${i}" style="display: ${i === 0 ? "block" : "none"}">
           <h2>${s.title}</h2>
           <div class="help-image-wrap">
-            <img src="" alt="${s.title}" data-help-image="${s.id}" />
+            <img src="${assetUrl(`/assets/${s.id}.webp`)}" alt="${s.title}" data-help-image="${s.id}" />
             <span class="help-image-placeholder">Image: set img src for "${s.id}"</span>
           </div>
           <p class="help-body">${s.body}</p>
