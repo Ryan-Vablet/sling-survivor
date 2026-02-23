@@ -1,4 +1,4 @@
-// Leaderboard submit-score: validate payload and insert via service_role (Matt-proof).
+// Leaderboard submit-score: replay verification then insert via service_role (Matt-proof).
 // Invoked by client with anon key; only this function can INSERT into leaderboard.
 
 import "@supabase/functions-js/edge-runtime.d.ts";
@@ -6,12 +6,6 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "jsr:@supabase/supabase-js@2/cors";
 
 const TABLE = "leaderboard";
-const MAX_DISTANCE = 50_000_000;
-const MAX_SCRAP = 10_000_000;
-const MAX_GOLD = 5_000_000;
-const MAX_SUMMARY_JSON_LENGTH = 50_000;
-const MAX_REPLAY_URL_LENGTH = 2_000;
-const MAX_GAME_VERSION_LENGTH = 64;
 
 type Body = {
   initials?: unknown;
@@ -23,6 +17,19 @@ type Body = {
   game_version?: unknown;
 };
 
+type ReplaySnapshot = {
+  t: number;
+  runState?: {
+    distanceM?: number;
+    gold?: number;
+    totalScrap?: number;
+  };
+};
+
+type ReplayData = {
+  snapshots?: ReplaySnapshot[];
+};
+
 function jsonResponse(data: object, status: number) {
   return new Response(JSON.stringify(data), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -30,7 +37,80 @@ function jsonResponse(data: object, status: number) {
   });
 }
 
-function validate(body: Body): { ok: true; row: Record<string, unknown> } | { ok: false; error: string } {
+/** Decompress gzip bytes and return parsed JSON. */
+async function fetchAndParseReplay(replayUrl: string): Promise<ReplayData | null> {
+  try {
+    const res = await fetch(replayUrl);
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(buf));
+        controller.close();
+      },
+    });
+    const decompressed = stream.pipeThrough(new DecompressionStream("gzip"));
+    const reader = decompressed.getReader();
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+    const out = new Uint8Array(totalLen);
+    let off = 0;
+    for (const c of chunks) {
+      out.set(c, off);
+      off += c.length;
+    }
+    const json = new TextDecoder().decode(out);
+    return JSON.parse(json) as ReplayData;
+  } catch {
+    return null;
+  }
+}
+
+/** Compute stats from replay snapshots; null if replay invalid or empty. hasTotalScrap = replay has totalScrap (new format). */
+function getReplayStats(
+  replay: ReplayData
+): { distance: number; scrap: number; gold: number; hasTotalScrap: boolean } | null {
+  const snapshots = replay?.snapshots;
+  if (!Array.isArray(snapshots) || snapshots.length === 0) return null;
+
+  let maxDistance = 0;
+  let lastGold = 0;
+  let lastTotalScrap = 0;
+  let hasTotalScrap = false;
+
+  for (const s of snapshots) {
+    const rs = s.runState;
+    if (rs && typeof rs.distanceM === "number" && rs.distanceM > maxDistance) {
+      maxDistance = rs.distanceM;
+    }
+  }
+
+  const last = snapshots[snapshots.length - 1];
+  const lastRs = last?.runState;
+  if (lastRs) {
+    if (typeof lastRs.gold === "number") lastGold = lastRs.gold;
+    if (typeof lastRs.totalScrap === "number") {
+      lastTotalScrap = lastRs.totalScrap;
+      hasTotalScrap = true;
+    }
+  }
+
+  return {
+    distance: Math.round(maxDistance),
+    scrap: Math.round(lastTotalScrap),
+    gold: Math.round(lastGold),
+    hasTotalScrap,
+  };
+}
+
+function validate(
+  body: Body
+): { ok: true; row: Record<string, unknown>; distance: number; scrap: number; gold: number } | { ok: false; error: string } {
   const initials =
     typeof body.initials === "string"
       ? String(body.initials).trim().toUpperCase().slice(0, 3)
@@ -40,18 +120,23 @@ function validate(body: Body): { ok: true; row: Record<string, unknown> } | { ok
   }
 
   const distance = Number(body.distance);
-  if (!Number.isFinite(distance) || distance < 0 || distance > MAX_DISTANCE) {
-    return { ok: false, error: "distance must be 0–" + MAX_DISTANCE.toLocaleString() };
+  if (!Number.isFinite(distance) || distance < 0) {
+    return { ok: false, error: "distance must be a non-negative number" };
   }
 
   const scrap = Number(body.scrap);
-  if (!Number.isFinite(scrap) || scrap < 0 || scrap > MAX_SCRAP) {
-    return { ok: false, error: "scrap must be 0–" + MAX_SCRAP.toLocaleString() };
+  if (!Number.isFinite(scrap) || scrap < 0) {
+    return { ok: false, error: "scrap must be a non-negative number" };
   }
 
   const gold = Number(body.gold);
-  if (!Number.isFinite(gold) || gold < 0 || gold > MAX_GOLD) {
-    return { ok: false, error: "gold must be 0–" + MAX_GOLD.toLocaleString() };
+  if (!Number.isFinite(gold) || gold < 0) {
+    return { ok: false, error: "gold must be a non-negative number" };
+  }
+
+  const replay_url = typeof body.replay_url === "string" ? body.replay_url.trim() : "";
+  if (!replay_url) {
+    return { ok: false, error: "replay_url is required" };
   }
 
   let summary_json: string | null = null;
@@ -59,30 +144,13 @@ function validate(body: Body): { ok: true; row: Record<string, unknown> } | { ok
     if (typeof body.summary_json !== "string") {
       return { ok: false, error: "summary_json must be a string" };
     }
-    if (body.summary_json.length > MAX_SUMMARY_JSON_LENGTH) {
-      return { ok: false, error: "summary_json too long" };
-    }
     summary_json = body.summary_json;
-  }
-
-  let replay_url: string | null = null;
-  if (body.replay_url != null) {
-    if (typeof body.replay_url !== "string") {
-      return { ok: false, error: "replay_url must be a string" };
-    }
-    if (body.replay_url.length > MAX_REPLAY_URL_LENGTH) {
-      return { ok: false, error: "replay_url too long" };
-    }
-    replay_url = body.replay_url;
   }
 
   let game_version: string | null = null;
   if (body.game_version != null) {
     if (typeof body.game_version !== "string") {
       return { ok: false, error: "game_version must be a string" };
-    }
-    if (body.game_version.length > MAX_GAME_VERSION_LENGTH) {
-      return { ok: false, error: "game_version too long" };
     }
     game_version = body.game_version;
   }
@@ -94,10 +162,16 @@ function validate(body: Body): { ok: true; row: Record<string, unknown> } | { ok
     scrap: Math.round(scrap),
     gold: Math.round(gold),
     summary_json: summary_json ?? null,
-    replay_url: replay_url ?? null,
+    replay_url,
     game_version: game_version ?? null,
   };
-  return { ok: true, row };
+  return {
+    ok: true,
+    row,
+    distance: Math.round(distance),
+    scrap: Math.round(scrap),
+    gold: Math.round(gold),
+  };
 }
 
 Deno.serve(async (req) => {
@@ -119,6 +193,38 @@ Deno.serve(async (req) => {
   const validated = validate(body);
   if (!validated.ok) {
     return jsonResponse({ error: validated.error }, 400);
+  }
+
+  // Replay verification: fetch replay and ensure stats match submitted payload
+  const replayUrl = validated.row.replay_url as string;
+  const replay = await fetchAndParseReplay(replayUrl);
+  if (!replay) {
+    return jsonResponse({ error: "Replay could not be fetched or parsed" }, 400);
+  }
+
+  const replayStats = getReplayStats(replay);
+  if (!replayStats) {
+    return jsonResponse({ error: "Replay has no valid snapshots" }, 400);
+  }
+
+  // Allow 1 unit tolerance for rounding
+  if (Math.abs(replayStats.distance - validated.distance) > 1) {
+    return jsonResponse(
+      { error: "Replay verification failed: distance does not match replay" },
+      400
+    );
+  }
+  if (Math.abs(replayStats.gold - validated.gold) > 1) {
+    return jsonResponse(
+      { error: "Replay verification failed: gold does not match replay" },
+      400
+    );
+  }
+  if (replayStats.hasTotalScrap && Math.abs(replayStats.scrap - validated.scrap) > 1) {
+    return jsonResponse(
+      { error: "Replay verification failed: scrap does not match replay" },
+      400
+    );
   }
 
   const url = Deno.env.get("SUPABASE_URL");

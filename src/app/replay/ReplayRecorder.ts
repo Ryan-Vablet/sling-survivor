@@ -62,6 +62,7 @@ export class ReplayRecorder {
       runState: {
         scrap: runState.scrap,
         gold: runState.gold,
+        totalScrap: runState.totalScrap,
         round: runState.currentRound,
         level: runState.currentLevel,
         distanceM,

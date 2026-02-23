@@ -31,6 +31,8 @@ export type ReplaySnapshotCoin = {
 export type ReplaySnapshotRunState = {
   scrap: number;
   gold: number;
+  /** Total scrap earned across all rounds (for replay verification). */
+  totalScrap: number;
   round: number;
   level: number;
   distanceM: number;
