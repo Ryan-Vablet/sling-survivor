@@ -135,7 +135,7 @@ export function submitToLocal(entry: LeaderboardEntry): void {
   console.log("[Leaderboard] Score saved to local");
 }
 
-/** Submit entry to global leaderboard (Supabase). No-op if not configured. */
+/** Submit entry to global leaderboard via Edge Function (Matt-proof). No-op if not configured. */
 export async function submitToGlobal(
   initials: string,
   payload: {
@@ -151,18 +151,19 @@ export async function submitToGlobal(
   const supabase = getSupabase();
   if (!supabase) return;
   try {
-    const { error } = await supabase.from(TABLE).insert({
-      initials: entry.initials,
-      score: entry.distance,
-      distance: entry.distance,
-      scrap: entry.scrap,
-      gold: entry.gold,
-      summary_json: entry.summaryJson ?? null,
-      replay_url: entry.replayUrl ?? null,
-      game_version: entry.gameVersion ?? null,
+    const { error } = await supabase.functions.invoke("submit-score", {
+      body: {
+        initials: entry.initials,
+        distance: entry.distance,
+        scrap: entry.scrap,
+        gold: entry.gold,
+        summary_json: entry.summaryJson ?? null,
+        replay_url: entry.replayUrl ?? null,
+        game_version: entry.gameVersion ?? null,
+      },
     });
     if (error) {
-      console.warn("[Leaderboard] Supabase submit failed:", error.message);
+      console.warn("[Leaderboard] submit-score failed:", error.message);
       return;
     }
     console.log("[Leaderboard] Score saved to global (Supabase)");

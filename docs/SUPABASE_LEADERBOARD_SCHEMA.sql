@@ -33,12 +33,8 @@ create policy "Allow public read leaderboard"
   to anon
   using (true);
 
--- Allow anonymous insert (for submitting scores)
+-- No anonymous insert: only Edge Function (service_role) can insert (Matt-proof).
 drop policy if exists "Allow public insert leaderboard" on public.leaderboard;
-create policy "Allow public insert leaderboard"
-  on public.leaderboard for insert
-  to anon
-  with check (true);
 
 -- ── Storage bucket for replays (required for replay uploads) ─────────────────
 -- 1) Create the bucket in Dashboard: Storage → New bucket → name "replays" → set Public.
