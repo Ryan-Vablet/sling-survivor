@@ -1,15 +1,14 @@
 /**
- * Single enemy death effect: boom glow (flash + ring) + shatter burst from RenderTexture snapshot.
+ * Single enemy death effect: boom glow (flash + ring) + shatter burst from texture slices.
  * Visual only; no gameplay. Cleans up textures and sprites when done.
+ * Fragments use the enemy's texture sliced into a grid (same tint/scale) so they're always visible.
  */
 import {
   Container,
   Graphics,
   Rectangle,
-  RenderTexture,
   Sprite,
   Texture,
-  type IRenderer,
 } from "pixi.js";
 import { TUNING } from "../content/tuning";
 
@@ -28,11 +27,12 @@ export class ExplosionFx {
   private flashGfx: Graphics | null = null;
   private ringGfx: Graphics | null = null;
   private lifetime = 0;
-  private renderTexture: RenderTexture | null = null;
-  private snapContainer: Container | null = null;
+  /** Base scale so each fragment = 1/grid of ship; used in update for scale-over-time. */
+  private fragScaleX = 1;
+  private fragScaleY = 1;
 
   constructor(
-    private renderer: IRenderer,
+    _renderer: unknown,
     worldX: number,
     worldY: number,
     enemySprite: Sprite,
@@ -42,66 +42,48 @@ export class ExplosionFx {
     this.container.x = worldX;
     this.container.y = worldY;
 
-    const rt = this.snapshotEnemy(enemySprite);
-    if (rt) {
-      this.renderTexture = rt;
-      this.spawnShatter(rt, enemyVel);
-    }
+    // Boom first so it draws behind the fragments
     this.spawnBoomGlow();
+    this.spawnShatter(enemySprite, enemyVel);
   }
 
   getContainer(): Container {
     return this.container;
   }
 
-  private snapshotEnemy(enemySprite: Sprite): RenderTexture | null {
+  /** Slice the enemy's texture into a grid; each cell = one piece. Scale so each fragment = 1/grid of ship. */
+  private spawnShatter(enemySprite: Sprite, enemyVel: { x: number; y: number }): void {
     const tex = enemySprite.texture;
-    if (!tex) return null;
-    const w = Math.min(96, Math.max(48, Math.ceil(tex.width * enemySprite.scale.x)));
-    const h = Math.min(96, Math.max(48, Math.ceil(tex.height * enemySprite.scale.y)));
-    const snapW = w;
-    const snapH = h;
-    this.snapContainer = new Container();
-    const clone = new Sprite(tex);
-    clone.anchor.set(0.5);
-    clone.x = snapW / 2;
-    clone.y = snapH / 2;
-    clone.scale.copyFrom(enemySprite.scale);
-    clone.rotation = enemySprite.rotation;
-    clone.tint = enemySprite.tint;
-    this.snapContainer.addChild(clone);
+    if (!tex?.source) return;
 
-    const rt = RenderTexture.create({ width: snapW, height: snapH });
-    this.renderer.render({
-      container: this.snapContainer,
-      renderTexture: rt,
-      clear: true,
-    });
-    this.snapContainer.destroy({ children: true });
-    this.snapContainer = null;
-    return rt;
-  }
-
-  private spawnShatter(rt: RenderTexture, enemyVel: { x: number; y: number }): void {
     const gw = FX.shatterGridW;
     const gh = FX.shatterGridH;
-    const snapW = rt.width;
-    const snapH = rt.height;
-    const cellW = snapW / gw;
-    const cellH = snapH / gh;
-    const halfW = snapW / 2;
-    const halfH = snapH / 2;
+    const texW = tex.width;
+    const texH = tex.height;
+    const cellW = texW / gw;
+    const cellH = texH / gh;
+    const sx = enemySprite.scale.x;
+    const sy = enemySprite.scale.y;
+    const displayW = texW * sx;
+    const displayH = texH * sy;
+    const fragW = displayW / gw;
+    const fragH = displayH / gh;
+
+    // Sub-frame texture may use full source size; scale so one fragment = fragW x fragH, then scale up
+    const sizeNudge = 3.54; // 3x bigger than exact grid (was 1.18)
+    this.fragScaleX = (sx / gw) * sizeNudge;
+    this.fragScaleY = (sy / gh) * sizeNudge;
 
     for (let gy = 0; gy < gh; gy++) {
       for (let gx = 0; gx < gw; gx++) {
-        const x = gx * cellW;
-        const y = gy * cellH;
-        const frame = new Rectangle(x, y, cellW, cellH);
-        const fragTex = new Texture({ source: rt.source, frame });
+        const frame = new Rectangle(gx * cellW, gy * cellH, cellW, cellH);
+        const fragTex = new Texture({ source: tex.source, frame });
         const sprite = new Sprite(fragTex);
         sprite.anchor.set(0.5);
-        sprite.x = (x + cellW / 2) - halfW;
-        sprite.y = (y + cellH / 2) - halfH;
+        sprite.tint = enemySprite.tint;
+        sprite.scale.set(this.fragScaleX, this.fragScaleY);
+        sprite.x = (gx + 0.5) * fragW - displayW / 2;
+        sprite.y = (gy + 0.5) * fragH - displayH / 2;
 
         const angle = Math.atan2(sprite.y, sprite.x) + (Math.random() - 0.5) * 1.5;
         const speed =
@@ -180,29 +162,23 @@ export class ExplosionFx {
         f.sprite.destroy({ texture: true });
       } else {
         f.sprite.alpha = 1 - t;
-        f.sprite.scale.set(1 + t * 0.15);
+        const grow = 1 + t * 0.15;
+        f.sprite.scale.set(this.fragScaleX * grow, this.fragScaleY * grow);
         stillAlive.push(f);
       }
     }
     this.fragments = stillAlive;
 
-    const done = this.lifetime >= Math.max(flashT, ringT, shatterT);
-    if (done && this.renderTexture) {
-      this.renderTexture.destroy(true);
-      this.renderTexture = null;
-    }
-    return done;
+    return this.lifetime >= Math.max(flashT, ringT, shatterT);
   }
 
   destroy(): void {
     for (const f of this.fragments) {
-      f.sprite.destroy();
+      f.sprite.destroy({ texture: true });
     }
     this.fragments = [];
     this.flashGfx?.destroy();
     this.ringGfx?.destroy();
-    this.renderTexture?.destroy(true);
-    this.snapContainer?.destroy({ children: true });
     this.container.destroy({ children: true });
   }
 }
