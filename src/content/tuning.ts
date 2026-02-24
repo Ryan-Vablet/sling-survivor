@@ -65,7 +65,7 @@ export const TUNING = {
     clusterMin: 3,
     clusterMax: 6,
     pickupRadius: 32,
-    coinSize: 24,
+    coinSize: 48, // 2x original 24 for visibility; clean multiple for DPI
   },
   merchant: {
     upgradePriceCommon: 40,

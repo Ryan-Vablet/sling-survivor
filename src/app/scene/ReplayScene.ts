@@ -586,7 +586,9 @@ export class ReplayScene implements IScene {
         sprite = new AnimatedSprite(this.coinFrames);
         sprite.animationSpeed = 0.18;
         sprite.anchor.set(0.5);
-        sprite.scale.set(0.2);
+        const size = TUNING.worldCoins.coinSize;
+        sprite.width = size;
+        sprite.height = size;
         this.coinContainer.addChild(sprite);
         this.coinSprites.set(c.id, sprite);
         sprite.play();
