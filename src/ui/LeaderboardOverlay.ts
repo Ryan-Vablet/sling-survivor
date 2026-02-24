@@ -1,6 +1,7 @@
 import {
   getLocalLeaderboard,
   getGlobalLeaderboard,
+  getGlobalLeaderboardCheaters,
   getGlobalLeaderboardVersionOptions,
   getSummaryFromEntry,
   type LeaderboardEntry,
@@ -17,6 +18,7 @@ type LeaderboardMode = "global" | "local";
 export class LeaderboardOverlay {
   private el: HTMLElement | null = null;
   private entries: LeaderboardEntry[] = [];
+  private cheaterEntries: LeaderboardEntry[] = [];
   private mode: LeaderboardMode = "global";
   private versionOptions: string[] = ["all"];
   private selectedVersion = "all";
@@ -85,15 +87,16 @@ export class LeaderboardOverlay {
           .join("");
       }
       this.entries = await getGlobalLeaderboard(this.selectedVersion);
+      this.cheaterEntries = await getGlobalLeaderboardCheaters();
     } else {
       if (versionWrap) versionWrap.style.display = "none";
       this.entries = getLocalLeaderboard();
+      this.cheaterEntries = [];
     }
     // Global tab shows only Supabase data; no local fallback
     if (this.entries.length === 0) {
       listEl.innerHTML = `<div class="leaderboard-empty">No scores yet. Play to get on the board!</div>`;
-      return;
-    }
+    } else {
     const replayUrlForEntry = (e: LeaderboardEntry) =>
       e.replayUrl ?? getSummaryFromEntry(e)?.replayUrl ?? "";
 
@@ -104,12 +107,14 @@ export class LeaderboardOverlay {
           replayUrl && this.onPlayReplay
             ? `<button type="button" class="leaderboard-replay-btn" data-index="${i}" data-replay-url="${replayUrl.replace(/"/g, "&quot;")}">Replay</button>`
             : "";
+        const earned = e.totalGoldEarned != null ? e.totalGoldEarned : "—";
         return `<div class="leaderboard-row" data-index="${i}">
             <span class="rank">${i + 1}</span>
             <span class="initials">${e.initials}</span>
             <span class="stat">${Math.round(e.distance)} m</span>
             <span class="stat">${e.scrap}</span>
             <span class="stat">${e.gold}</span>
+            <span class="stat">${earned}</span>
             <span class="leaderboard-actions">
               <button type="button" class="leaderboard-view-btn" data-index="${i}">View</button>
               ${replayBtn}
@@ -134,6 +139,7 @@ export class LeaderboardOverlay {
             distanceM: entry.distance,
             scrap: entry.scrap,
             gold: entry.gold,
+            totalGoldEarned: entry.totalGoldEarned ?? entry.gold,
             round: 0,
             totalKills: 0,
             level: 0,
@@ -155,6 +161,78 @@ export class LeaderboardOverlay {
         this.onPlayReplay(url);
       });
     });
+    }
+    // h4x0rs section (global only, when there are flagged cheaters)
+    const cheatersWrap = this.el.querySelector(".leaderboard-cheaters-wrap") as HTMLElement | null;
+    const cheatersList = this.el.querySelector(".leaderboard-cheaters-list") as HTMLElement | null;
+    if (cheatersWrap && cheatersList) {
+      if (this.mode === "global" && this.cheaterEntries.length > 0) {
+        cheatersWrap.style.display = "";
+        const replayUrlForEntry = (e: LeaderboardEntry) =>
+          e.replayUrl ?? getSummaryFromEntry(e)?.replayUrl ?? "";
+        cheatersList.innerHTML = this.cheaterEntries
+          .map((e, i) => {
+            const earned = e.totalGoldEarned != null ? e.totalGoldEarned : "—";
+            const replayUrl = replayUrlForEntry(e);
+            const replayBtn =
+              replayUrl && this.onPlayReplay
+                ? `<button type="button" class="leaderboard-replay-btn leaderboard-cheater-replay" data-replay-url="${replayUrl.replace(/"/g, "&quot;")}">Replay</button>`
+                : "";
+            return `<div class="leaderboard-row leaderboard-cheater-row">
+              <span class="rank">${i + 1}</span>
+              <span class="initials">${e.initials}</span>
+              <span class="stat">${Math.round(e.distance)} m</span>
+              <span class="stat">${e.scrap}</span>
+              <span class="stat">${e.gold}</span>
+              <span class="stat">${earned}</span>
+              <span class="leaderboard-actions">
+                <button type="button" class="leaderboard-view-btn" data-cheater-index="${i}">View</button>
+                ${replayBtn}
+              </span>
+            </div>`;
+          })
+          .join("");
+        cheatersList.querySelectorAll(".leaderboard-view-btn[data-cheater-index]").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const idx = parseInt((e.currentTarget as HTMLElement).dataset.cheaterIndex ?? "-1", 10);
+            if (idx < 0 || !this.onViewSummary) return;
+            const entry = this.cheaterEntries[idx];
+            const summary = getSummaryFromEntry(entry);
+            if (summary) {
+              this.hide();
+              this.onViewSummary(summary);
+            } else {
+              this.onViewSummary({
+                initials: entry.initials,
+                distanceM: entry.distance,
+                scrap: entry.scrap,
+                gold: entry.gold,
+                totalGoldEarned: entry.totalGoldEarned ?? entry.gold,
+                round: 0,
+                totalKills: 0,
+                level: 0,
+                upgrades: [],
+                evolutions: [],
+                artifacts: [],
+              });
+              this.hide();
+            }
+          });
+        });
+        cheatersList.querySelectorAll(".leaderboard-cheater-replay").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const url = (e.currentTarget as HTMLElement).dataset.replayUrl;
+            if (!url || !this.onPlayReplay) return;
+            this.hide();
+            this.onPlayReplay(url);
+          });
+        });
+      } else {
+        cheatersWrap.style.display = "none";
+      }
+    }
   }
 
   private markup(): string {
@@ -293,6 +371,24 @@ export class LeaderboardOverlay {
     padding: 40px 20px;
     font-size: 14px;
   }
+  .leaderboard-cheaters-wrap {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #4a2a2a;
+  }
+  .leaderboard-cheaters-title {
+    color: #aa4444;
+    font-size: 14px;
+    letter-spacing: 2px;
+    margin: 0 0 10px 0;
+    text-shadow: 0 0 8px rgba(170,68,68,0.4);
+  }
+  .leaderboard-cheater-row {
+    background: rgba(40,0,0,0.35);
+    color: #cc8888;
+  }
+  .leaderboard-cheater-row .rank { color: #aa4444; }
+  .leaderboard-cheater-row .stat { color: #dd6666; }
   .leaderboard-overlay-close {
     display: block;
     margin: 20px auto 0;
@@ -319,8 +415,12 @@ export class LeaderboardOverlay {
       <option value="all">All leaderboards</option>
     </select>
   </div>
-  <div class="leaderboard-head"><span>#</span><span>INITIALS</span><span>DIST</span><span>SCRAP</span><span>GOLD</span><span></span></div>
+  <div class="leaderboard-head"><span>#</span><span>INITIALS</span><span>DIST</span><span>SCRAP</span><span>GOLD</span><span>EARNED</span><span></span></div>
   <div class="leaderboard-list">Loading…</div>
+  <div class="leaderboard-cheaters-wrap" style="display:none;">
+    <h4 class="leaderboard-cheaters-title">h4x0rs</h4>
+    <div class="leaderboard-cheaters-list"></div>
+  </div>
   <button type="button" class="leaderboard-overlay-close">Close</button>
 </div>
 `;
@@ -329,16 +429,20 @@ export class LeaderboardOverlay {
 
 /** One-off DOM modal: show run stats, ask for initials (3 chars), then call onSubmit(initials). */
 export function showInitialsPrompt(
-  stats: { distance: number; scrap: number; gold: number },
+  stats: { distance: number; scrap: number; gold: number; totalGoldEarned?: number },
   onSubmit: (initials: string) => void
 ): void {
+  const goldLine =
+    stats.totalGoldEarned != null
+      ? `Gold: ${stats.gold} · Earned: ${stats.totalGoldEarned}`
+      : `Gold: ${stats.gold}`;
   const wrap = document.createElement("div");
   wrap.className = "initials-prompt-overlay";
   wrap.style.cssText = "position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);font-family:system-ui,sans-serif;";
   wrap.innerHTML = `
     <div style="background:#12122a;border:2px solid #4488aa;border-radius:12px;padding:28px;text-align:center;max-width:320px;">
       <p style="color:#fff;margin:0 0 8px 0;font-size:18px;">You made the top 10!</p>
-      <p style="color:#88aacc;margin:0 0 16px 0;font-size:14px;">Distance: ${Math.round(stats.distance)} m · Scrap: ${stats.scrap} · Gold: ${stats.gold}</p>
+      <p style="color:#88aacc;margin:0 0 16px 0;font-size:14px;">Distance: ${Math.round(stats.distance)} m · Scrap: ${stats.scrap} · ${goldLine}</p>
       <label style="display:block;color:#aaccdd;font-size:13px;margin-bottom:6px;">Enter your initials (3 letters)</label>
       <input type="text" maxlength="3" placeholder="ABC" style="width:120px;padding:10px;font-size:20px;letter-spacing:6px;text-align:center;border-radius:8px;border:2px solid #4488aa;background:#0a0a1a;color:#fff;">
       <div style="margin-top:16px;">

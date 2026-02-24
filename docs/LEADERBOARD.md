@@ -24,7 +24,8 @@ Defined in `src/api/leaderboard.ts` as `LeaderboardEntry`:
 | `initials`  | string | 1–3 chars, uppercased |
 | `distance`  | number | Meters traveled (primary for ranking) |
 | `scrap`     | number | Total scrap earned |
-| `gold`      | number | Gold at end of run |
+| `gold`      | number | Gold at end of run (after merchant spending) |
+| `totalGoldEarned` | number? | Total gold earned during run (never reduced by spending). Gold spent = totalGoldEarned − gold. Optional for old entries. |
 | `summaryJson` | string? | JSON of `RunSummaryData` for "View summary" |
 | `replayUrl` | string? | Public URL of replay in Supabase Storage |
 | `gameVersion` | string? | From `VERSION` (for filtering by version) |
@@ -38,7 +39,8 @@ Defined in `src/api/leaderboard.ts` as `LeaderboardEntry`:
 Schema in `docs/SUPABASE_LEADERBOARD_SCHEMA.sql`:
 
 - **Table:** `public.leaderboard`
-- **Columns:** `id` (identity), `initials`, `score` (legacy, same as distance), `distance`, `scrap`, `gold`, `summary_json`, `replay_url`, `game_version`, `created_at`.
+- **Columns:** `id` (identity), `initials`, `score` (legacy, same as distance), `distance`, `scrap`, `gold`, `total_gold_earned` (optional), `summary_json`, `replay_url`, `game_version`, `cheater` (boolean, default false), `created_at`.
+- **Cheater flag:** Set `cheater = true` in the dashboard (or via SQL) to hide an entry from the normal global leaderboard. Flagged entries appear only in the **h4x0rs** section at the bottom of the Global tab.
 - **RLS:** Enabled. **Select** allowed for `anon` (public read). **Insert** not allowed for `anon`; only the Edge Function (service_role) inserts.
 
 ---

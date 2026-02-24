@@ -18,26 +18,35 @@ export type LeaderboardEntry = {
   /** Primary stat for ranking (meters traveled). */
   distance: number;
   scrap: number;
+  /** Gold at end of run (after merchant spending). */
   gold: number;
+  /** Total gold earned during run (never reduced by spending). Optional for old entries. */
+  totalGoldEarned?: number;
   /** JSON string of RunSummaryData for "View summary"; optional for old entries. */
   summaryJson?: string;
   /** URL of replay in Supabase Storage (optional). */
   replayUrl?: string;
   /** Game version from VERSION file (optional). */
   gameVersion?: string;
+  /** True if flagged as cheater; excluded from normal global leaderboard, shown in h4x0rs. */
+  cheater?: boolean;
 };
 
 /** Backward compat: treat legacy "score" as distance when present. */
 function normRow(row: Record<string, unknown>): LeaderboardEntry {
   const distance = Number(row.distance ?? row.score ?? 0);
+  const gold = Number(row.gold ?? 0);
+  const totalGoldEarned = row.total_gold_earned != null ? Number(row.total_gold_earned) : undefined;
   return {
     initials: String(row.initials ?? "").slice(0, 3) || "???",
     distance,
     scrap: Number(row.scrap ?? 0),
-    gold: Number(row.gold ?? 0),
+    gold,
+    totalGoldEarned,
     summaryJson: row.summary_json != null ? String(row.summary_json) : undefined,
     replayUrl: row.replay_url != null ? String(row.replay_url) : undefined,
     gameVersion: row.game_version != null ? String(row.game_version) : undefined,
+    cheater: row.cheater === true,
   };
 }
 
@@ -66,14 +75,15 @@ export function getLocalLeaderboard(): LeaderboardEntry[] {
   return sortByDistance(local).slice(0, TOP_N);
 }
 
-/** Global leaderboard (Supabase). Optional majorVersion: "all" or undefined = no filter; "0.6" = game_version like "0.6%". Returns [] if not configured or on error. */
+/** Global leaderboard (Supabase). Excludes cheaters. Optional majorVersion: "all" or undefined = no filter; "0.6" = game_version like "0.6%". Returns [] if not configured or on error. */
 export async function getGlobalLeaderboard(majorVersion?: string): Promise<LeaderboardEntry[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   try {
     let q = supabase
       .from(TABLE)
-      .select("initials, distance, scrap, gold, summary_json, replay_url, game_version")
+      .select("initials, distance, scrap, gold, total_gold_earned, summary_json, replay_url, game_version, cheater")
+      .eq("cheater", false)
       .order("distance", { ascending: false })
       .limit(TOP_N);
     if (majorVersion && majorVersion !== "all") {
@@ -87,7 +97,25 @@ export async function getGlobalLeaderboard(majorVersion?: string): Promise<Leade
   }
 }
 
-/** Unique major versions (e.g. "0.6", "0.7") from global leaderboard for filter dropdown. First value is "all". */
+/** Global leaderboard entries flagged as cheaters (for "h4x0rs" section). Returns [] if not configured or on error. */
+export async function getGlobalLeaderboardCheaters(): Promise<LeaderboardEntry[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select("initials, distance, scrap, gold, total_gold_earned, summary_json, replay_url, game_version, cheater")
+      .eq("cheater", true)
+      .order("distance", { ascending: false })
+      .limit(50);
+    if (error) return [];
+    return (data ?? []).map((row: Record<string, unknown>) => normRow(row));
+  } catch {
+    return [];
+  }
+}
+
+/** Unique major versions (e.g. "0.6", "0.7") from global leaderboard (non-cheaters only) for filter dropdown. First value is "all". */
 export async function getGlobalLeaderboardVersionOptions(): Promise<string[]> {
   const supabase = getSupabase();
   if (!supabase) return ["all"];
@@ -95,6 +123,7 @@ export async function getGlobalLeaderboardVersionOptions(): Promise<string[]> {
     const { data, error } = await supabase
       .from(TABLE)
       .select("game_version")
+      .eq("cheater", false)
       .not("game_version", "is", null);
     if (error) return ["all"];
     const versions = (data ?? []) as { game_version: string }[];
@@ -143,6 +172,7 @@ function makeEntry(
     distance: number;
     scrap: number;
     gold: number;
+    totalGoldEarned?: number;
     summary?: RunSummaryData;
     replayUrl?: string;
     gameVersion?: string;
@@ -154,6 +184,7 @@ function makeEntry(
     distance: Math.max(0, payload.distance),
     scrap: Math.max(0, payload.scrap),
     gold: Math.max(0, payload.gold),
+    totalGoldEarned: payload.totalGoldEarned != null ? Math.max(0, payload.totalGoldEarned) : undefined,
     summaryJson,
     replayUrl: payload.replayUrl,
     gameVersion: payload.gameVersion,
@@ -175,6 +206,7 @@ export async function submitToGlobal(
     distance: number;
     scrap: number;
     gold: number;
+    totalGoldEarned?: number;
     summary?: RunSummaryData;
     replayUrl?: string;
     gameVersion?: string;
@@ -190,6 +222,7 @@ export async function submitToGlobal(
         distance: entry.distance,
         scrap: entry.scrap,
         gold: entry.gold,
+        total_gold_earned: entry.totalGoldEarned ?? null,
         summary_json: entry.summaryJson ?? null,
         replay_url: entry.replayUrl ?? null,
         game_version: entry.gameVersion ?? null,
@@ -205,13 +238,14 @@ export async function submitToGlobal(
   }
 }
 
-/** Submit an entry (initials + distance/scrap/gold + optional summary + optional replayUrl + optional gameVersion). Writes to both local and global when applicable. */
+/** Submit an entry (initials + distance/scrap/gold + optional totalGoldEarned + optional summary + optional replayUrl + optional gameVersion). Writes to both local and global when applicable. */
 export async function submitScore(
   initials: string,
   payload: {
     distance: number;
     scrap: number;
     gold: number;
+    totalGoldEarned?: number;
     summary?: RunSummaryData;
     replayUrl?: string;
     gameVersion?: string;

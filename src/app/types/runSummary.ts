@@ -9,6 +9,8 @@ export type RunSummaryData = {
   distanceM: number;
   scrap: number;
   gold: number;
+  /** Total gold earned this run (never reduced by spending). Gold spent = totalGoldEarned - gold. */
+  totalGoldEarned: number;
   round: number;
   totalKills: number;
   level: number;

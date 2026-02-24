@@ -12,6 +12,7 @@ type Body = {
   distance?: unknown;
   scrap?: unknown;
   gold?: unknown;
+  total_gold_earned?: unknown;
   summary_json?: unknown;
   replay_url?: unknown;
   game_version?: unknown;
@@ -23,6 +24,7 @@ type ReplaySnapshot = {
     totalDistanceM?: number;
     totalScrap?: number;
     gold?: number;
+    totalGoldEarned?: number;
   };
 };
 
@@ -71,10 +73,10 @@ async function fetchAndParseReplay(replayUrl: string): Promise<ReplayData | null
   }
 }
 
-/** Compute stats from last replay snapshot. Returns null if replay invalid or missing required fields (totalDistanceM, totalScrap, gold). */
+/** Compute stats from last replay snapshot. Returns null if replay invalid or missing required fields (totalDistanceM, totalScrap, gold). totalGoldEarned optional for backward compat. */
 function getReplayStats(
   replay: ReplayData
-): { distance: number; scrap: number; gold: number } | null {
+): { distance: number; scrap: number; gold: number; totalGoldEarned: number | null } | null {
   const snapshots = replay?.snapshots;
   if (!Array.isArray(snapshots) || snapshots.length === 0) return null;
 
@@ -93,16 +95,20 @@ function getReplayStats(
     return null;
   }
 
+  const totalGoldEarned =
+    typeof rs.totalGoldEarned === "number" ? Math.round(rs.totalGoldEarned) : null;
+
   return {
     distance: Math.round(totalDistanceM),
     scrap: Math.round(totalScrap),
     gold: Math.round(gold),
+    totalGoldEarned,
   };
 }
 
 function validate(
   body: Body
-): { ok: true; row: Record<string, unknown>; distance: number; scrap: number; gold: number } | { ok: false; error: string } {
+): { ok: true; row: Record<string, unknown>; distance: number; scrap: number; gold: number; totalGoldEarned: number | null } | { ok: false; error: string } {
   const initials =
     typeof body.initials === "string"
       ? String(body.initials).trim().toUpperCase().slice(0, 3)
@@ -124,6 +130,15 @@ function validate(
   const gold = Number(body.gold);
   if (!Number.isFinite(gold) || gold < 0) {
     return { ok: false, error: "gold must be a non-negative number" };
+  }
+
+  let total_gold_earned: number | null = null;
+  if (body.total_gold_earned != null) {
+    const n = Number(body.total_gold_earned);
+    if (!Number.isFinite(n) || n < 0) {
+      return { ok: false, error: "total_gold_earned must be a non-negative number" };
+    }
+    total_gold_earned = Math.round(n);
   }
 
   const replay_url = typeof body.replay_url === "string" ? body.replay_url.trim() : "";
@@ -153,6 +168,7 @@ function validate(
     distance: Math.round(distance),
     scrap: Math.round(scrap),
     gold: Math.round(gold),
+    total_gold_earned: total_gold_earned,
     summary_json: summary_json ?? null,
     replay_url,
     game_version: game_version ?? null,
@@ -163,6 +179,7 @@ function validate(
     distance: Math.round(distance),
     scrap: Math.round(scrap),
     gold: Math.round(gold),
+    totalGoldEarned: total_gold_earned,
   };
 }
 
@@ -217,6 +234,14 @@ Deno.serve(async (req) => {
       { error: "Replay verification failed: scrap does not match replay" },
       400
     );
+  }
+  if (validated.totalGoldEarned != null && replayStats.totalGoldEarned != null) {
+    if (Math.abs(replayStats.totalGoldEarned - validated.totalGoldEarned) > 1) {
+      return jsonResponse(
+        { error: "Replay verification failed: total_gold_earned does not match replay" },
+        400
+      );
+    }
   }
 
   const url = Deno.env.get("SUPABASE_URL");

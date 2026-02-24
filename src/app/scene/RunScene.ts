@@ -353,7 +353,9 @@ export class RunScene implements IScene {
         if (this.runState.appliedArtifacts.has("golden_thrusters")) {
           goldGain *= 1.2;
         }
-        this.runState.gold += Math.round(goldGain);
+        const amount = Math.round(goldGain);
+        this.runState.gold += amount;
+        this.runState.totalGoldEarned += amount;
         const sprite = this.coinSprites.get(c.id);
         if (sprite) {
           this.coinContainer.removeChild(sprite);
@@ -403,8 +405,8 @@ export class RunScene implements IScene {
     const sz = RunScene.JOYSTICK_ARROW_SIZE;
 
     const base = new Graphics();
-    base.circle(cx, cy).fill({ color: 0x000000, alpha: 0.35 });
-    base.circle(cx, cy).stroke({ width: 2, color: 0xffffff, alpha: 0.4 });
+    base.circle(cx, cy, r).fill({ color: 0x000000, alpha: 0.35 });
+    base.circle(cx, cy, r).stroke({ width: 2, color: 0xffffff, alpha: 0.4 });
     c.addChild(base);
 
     const arrowFill = { color: 0xffffff, alpha: 0.5 };
@@ -818,6 +820,7 @@ export class RunScene implements IScene {
         this.runState.rocketsRemaining * TUNING.gold.rocketBonus;
       const goldEarned = goldFromScrap + goldFromRockets;
       this.runState.gold += goldEarned;
+      this.runState.totalGoldEarned += goldEarned;
 
       this.runState.scrap = 0;
       this.runState.currentRound++;
@@ -884,6 +887,7 @@ export class RunScene implements IScene {
           distanceM: this.runState.totalDistanceM,
           scrap: this.runState.totalScrap,
           gold: this.runState.gold,
+          totalGoldEarned: this.runState.totalGoldEarned,
           round: this.runState.currentRound,
           totalKills: this.runState.totalKills,
           level: this.runState.currentLevel,
@@ -916,7 +920,7 @@ export class RunScene implements IScene {
         return;
       }
       showInitialsPrompt(
-        { distance: summaryData.distanceM, scrap: summaryData.scrap, gold: summaryData.gold },
+        { distance: summaryData.distanceM, scrap: summaryData.scrap, gold: summaryData.gold, totalGoldEarned: summaryData.totalGoldEarned },
         async (initials) => {
           summaryData.initials = initials;
           if (summaryData.replayPayload) {
@@ -928,6 +932,7 @@ export class RunScene implements IScene {
             distance,
             scrap: summaryData.scrap,
             gold: summaryData.gold,
+            totalGoldEarned: summaryData.totalGoldEarned,
             summary: summaryData,
             replayUrl: summaryData.replayUrl,
             gameVersion: summaryData.gameVersion,

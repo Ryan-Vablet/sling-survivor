@@ -37,6 +37,8 @@ export class RunState {
   rocketsRemaining: number;
   scrap = 0;
   gold = 0;
+  /** Total gold earned this run (coin pickups + round bonuses); never reduced by merchant spending. */
+  totalGoldEarned = 0;
   /** Total scrap earned across all rounds this run (never reset until new run). */
   totalScrap = 0;
   /** Cumulative distance (meters) across all rockets this run; used for leaderboard. */

@@ -22,6 +22,12 @@ begin
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'leaderboard' and column_name = 'game_version') then
     alter table public.leaderboard add column game_version text;
   end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'leaderboard' and column_name = 'total_gold_earned') then
+    alter table public.leaderboard add column total_gold_earned bigint;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'leaderboard' and column_name = 'cheater') then
+    alter table public.leaderboard add column cheater boolean not null default false;
+  end if;
 end $$;
 
 -- Allow anonymous read (for global leaderboard)
