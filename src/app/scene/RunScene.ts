@@ -24,6 +24,8 @@ import { EvolutionSystem } from "../../sim/systems/EvolutionSystem";
 import { TierSystem } from "../../sim/systems/TierSystem";
 import { RunState } from "../../sim/runtime/RunState";
 import { rollUpgradeChoices } from "../../content/upgrades/upgradePool";
+import { UPGRADE_DEFS } from "../../content/upgrades/upgradeDefs";
+import type { UpgradeChoice } from "../../content/upgrades/upgradeTypes";
 import { Hud } from "../../ui/Hud";
 import { EndScreen } from "../../ui/EndScreen";
 import { UpgradeOverlay } from "../../ui/UpgradeOverlay";
@@ -45,6 +47,7 @@ import type {
   ReplaySnapshotPlayer,
   ReplaySnapshotDrone,
   ReplaySnapshotCoin,
+  ReplayEvent,
 } from "../replay/replayTypes";
 import { VERSION } from "../../version";
 
@@ -63,6 +66,15 @@ const SMOKE_TRAIL_MAX_AGE = 1.8;
 const SMOKE_TRAIL_MAX_POINTS = 100;
 const SMOKE_TRAIL_ADD_INTERVAL = 0.04;
 const SMOKE_TRAIL_MIN_SPEED = 30;
+
+/** Real-time duration (s) to show upgrade overlay during replay. */
+const REPLAY_UPGRADE_DISPLAY_DURATION = 2.5;
+
+type ReplayUpgradeItem = {
+  showAt: number;
+  choiceIds: [string, string, string];
+  pickedIndex: number;
+};
 
 type TrailPoint = { x: number; y: number; t: number };
 
@@ -138,6 +150,9 @@ export class RunScene implements IScene {
   private replaySpeed = 1;
   private replayPrevDroneIds = new Set<number>();
   private replayEventIndex = 0;
+  private replayUpgradeQueue: ReplayUpgradeItem[] = [];
+  /** Real time (s) when replay upgrade overlay should close; -1 if not showing. */
+  private replayUpgradeShowEndRealT = -1;
   private replayEscHandler: ((e: KeyboardEvent) => void) | null = null;
   private replayUiRoot: HTMLElement | null = null;
 
@@ -172,6 +187,9 @@ export class RunScene implements IScene {
       this.fxManager.clear();
       this.deathEventsThisFrame = [];
       this.applyReplaySnapshotToState(replayDataFromScene.snapshots[0]);
+      this.weapon.reset();
+      this.replayUpgradeQueue = this.buildReplayUpgradeQueue(replayDataFromScene);
+      this.replayUpgradeShowEndRealT = -1;
       this.replayRecorder = null;
     } else {
       this.replayData = null;
@@ -770,6 +788,83 @@ export class RunScene implements IScene {
       return;
     }
 
+    const nowReal = performance.now() * 0.001;
+    if (this.replayUpgradeShowEndRealT >= 0 && nowReal >= this.replayUpgradeShowEndRealT) {
+      this.upgradeOverlay.hide();
+      this.replayUpgradeShowEndRealT = -1;
+    }
+
+    if (this.replayUpgradeShowEndRealT >= 0) {
+      const state = this.getInterpolatedReplayState(this.replayTime);
+      this.applyReplayState(state);
+      this.tierSys.update(state.runStateSlice.distanceM);
+      this.stepReplayProjectiles(dt);
+      this.cam.follow(
+        this.player.pos.x - viewW * 0.33,
+        this.player.pos.y - viewH * 0.55
+      );
+      this.cam.update(dt);
+      this.toast.update(dt);
+      this.fxManager.update(dt, false);
+      this.coinAnimT += dt;
+      for (const c of this.worldCoins) {
+        if (!c.alive) continue;
+        const sprite = this.coinSprites.get(c.id);
+        if (sprite) {
+          sprite.x = c.pos.x;
+          sprite.y = c.pos.y + Math.sin(this.coinAnimT * 2 + c.bobPhase) * 6;
+        }
+      }
+      this.drawWorld(viewW, viewH);
+      const ps = this.runState.playerStats;
+      const currentTier = this.tierSys.currentTier;
+      this.hud.update({
+        distanceM: this.lastDistanceM,
+        speed: Math.hypot(this.player.vel.x, this.player.vel.y),
+        kills: this.player.kills,
+        hits: this.player.hits,
+        hp: this.player.hp,
+        hpMax: ps.hpMax,
+        boost: this.player.boost,
+        boostMax: ps.boostMax,
+        round: this.runState.currentRound,
+        rocketsLeft: this.runState.rocketsRemaining,
+        scrap: this.runState.scrap,
+        roundToll: this.runState.roundToll,
+        gold: this.runState.gold,
+        xp: this.runState.currentXp,
+        xpMax: this.runState.xpToNextLevel,
+        level: this.runState.currentLevel,
+        artifacts: this.runState.appliedArtifacts.size,
+        tierLabel: currentTier.shortLabel,
+        tierName: currentTier.name,
+        tierAccent: currentTier.visuals.accentColor,
+        tierScrapMult: currentTier.reward.scrapMult,
+        tierCoinMult: currentTier.reward.coinGoldMult,
+        tierHpMult: currentTier.difficulty.enemyHpMult,
+        tierSpeedMult: currentTier.difficulty.enemySpeedMult,
+      });
+      return;
+    }
+
+    const nextUpgrade = this.replayUpgradeQueue[0];
+    if (nextUpgrade && this.replayTime >= nextUpgrade.showAt) {
+      this.replayUpgradeQueue.shift();
+      const choices = this.replayChoicesFromIds(nextUpgrade.choiceIds);
+      if (choices.length >= 3) {
+        this.upgradeOverlay.show(
+          choices,
+          viewW,
+          viewH,
+          () => {},
+          { pickedIndex: nextUpgrade.pickedIndex }
+        );
+        this.upgradeOverlay.layout(viewW, viewH);
+        this.replayUpgradeShowEndRealT = nowReal + REPLAY_UPGRADE_DISPLAY_DURATION;
+      }
+      return;
+    }
+
     const events = this.replayData!.events ?? [];
     while (this.replayEventIndex < events.length) {
       const ev = events[this.replayEventIndex];
@@ -810,6 +905,15 @@ export class RunScene implements IScene {
 
     this.applyReplayState(state);
     this.tierSys.update(state.runStateSlice.distanceM);
+
+    this.weapon.step(
+      this.player,
+      this.drones,
+      this.projectiles,
+      this.runState,
+      dt
+    );
+    this.stepReplayProjectiles(dt);
 
     this.cam.follow(
       this.player.pos.x - viewW * 0.33,
@@ -858,6 +962,34 @@ export class RunScene implements IScene {
       tierHpMult: currentTier.difficulty.enemyHpMult,
       tierSpeedMult: currentTier.difficulty.enemySpeedMult,
     });
+  }
+
+  private buildReplayUpgradeQueue(data: ReplayData): ReplayUpgradeItem[] {
+    const queue: ReplayUpgradeItem[] = [];
+    const events = data.events ?? [];
+    const displays = events.filter(
+      (e): e is ReplayEvent & { type: "upgrade_display" } => e.type === "upgrade_display"
+    );
+    const picks = events.filter(
+      (e): e is ReplayEvent & { type: "upgrade_pick" } => e.type === "upgrade_pick"
+    );
+    for (let i = 0; i < displays.length; i++) {
+      queue.push({
+        showAt: displays[i].t,
+        choiceIds: displays[i].choiceIds,
+        pickedIndex: picks[i]?.index ?? 0,
+      });
+    }
+    return queue;
+  }
+
+  private replayChoicesFromIds(ids: [string, string, string]): UpgradeChoice[] {
+    const choices: UpgradeChoice[] = [];
+    for (const id of ids) {
+      const def = UPGRADE_DEFS.find((d) => d.id === id);
+      if (def) choices.push({ def, currentStacks: 0 });
+    }
+    return choices;
   }
 
   private showReplayEndOverlay(): void {
@@ -956,6 +1088,23 @@ export class RunScene implements IScene {
     };
     this.replayEscHandler = handler;
     window.addEventListener("keydown", handler);
+  }
+
+  /** Move and age projectiles during replay (visual only; no collision). */
+  private stepReplayProjectiles(dt: number): void {
+    for (const p of this.projectiles) {
+      if (!p.alive) continue;
+      p.lifeT -= dt;
+      if (p.lifeT <= 0) {
+        p.alive = false;
+        continue;
+      }
+      p.pos.x += p.vel.x * dt;
+      p.pos.y += p.vel.y * dt;
+    }
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      if (!this.projectiles[i].alive) this.projectiles.splice(i, 1);
+    }
   }
 
   private ensureReplayCoinSprites(): void {
