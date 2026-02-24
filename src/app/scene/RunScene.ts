@@ -144,8 +144,13 @@ export class RunScene implements IScene {
       this.runState = returningState;
       this.replayRecorder = (this.scenes.data.replayRecorder as ReplayRecorder) ?? null;
       this.replayT = (this.scenes.data.replayT as number) ?? 0;
+      const savedMaxDistanceM = this.scenes.data.maxDistanceM as number | undefined;
+      if (typeof savedMaxDistanceM === "number" && savedMaxDistanceM >= 0) {
+        this.maxDistanceM = savedMaxDistanceM;
+      }
       this.scenes.data.replayRecorder = undefined;
       this.scenes.data.replayT = undefined;
+      this.scenes.data.maxDistanceM = undefined;
       this.resetRocket();
     } else {
       this.resetRun();
@@ -793,6 +798,7 @@ export class RunScene implements IScene {
 
   private endRocket() {
     this.ended = true;
+    this.runState.totalDistanceM += this.lastDistanceM;
     const distanceM = Math.max(
       0,
       (this.player.pos.x - TUNING.launcher.originX) / 10
@@ -843,6 +849,7 @@ export class RunScene implements IScene {
           this.scenes.data.replayRecorder = this.replayRecorder ?? undefined;
           this.scenes.data.replayT = this.replayT;
           this.scenes.data.runState = this.runState;
+          this.scenes.data.maxDistanceM = this.maxDistanceM;
           this.scenes.switchTo("merchant");
         })
       );
@@ -874,7 +881,7 @@ export class RunScene implements IScene {
         });
         const summaryData: RunSummaryData = {
           initials: "???",
-          distanceM: this.maxDistanceM,
+          distanceM: this.runState.totalDistanceM,
           scrap: this.runState.totalScrap,
           gold: this.runState.gold,
           round: this.runState.currentRound,
@@ -888,10 +895,10 @@ export class RunScene implements IScene {
         };
         summaryData.score = computeRunScore(summaryData);
         const replay = summaryData.replayPayload;
-        if (replay) saveLocalReplay(replay, { distanceM: this.maxDistanceM });
+        if (replay) saveLocalReplay(replay, { distanceM: this.runState.totalDistanceM });
         this.scenes.data.summaryData = summaryData;
         this.end.setText(
-          `GAME OVER\n\nDistance: ${Math.round(this.maxDistanceM)} m\n\nClick to continue`
+          `GAME OVER\n\nTotal distance: ${Math.round(this.runState.totalDistanceM)} m\n\nClick to continue`
         );
         this.showEndScreenOverlay(() =>
           this.trySubmitScoreAndThen(summaryData, () => this.scenes.switchTo("summary"))

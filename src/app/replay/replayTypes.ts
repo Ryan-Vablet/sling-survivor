@@ -33,6 +33,8 @@ export type ReplaySnapshotRunState = {
   gold: number;
   /** Total scrap earned across all rounds (for replay verification). */
   totalScrap: number;
+  /** Cumulative distance across all rockets (for leaderboard verification). */
+  totalDistanceM?: number;
   round: number;
   level: number;
   distanceM: number;

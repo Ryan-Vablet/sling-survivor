@@ -20,9 +20,9 @@ type Body = {
 type ReplaySnapshot = {
   t: number;
   runState?: {
-    distanceM?: number;
-    gold?: number;
+    totalDistanceM?: number;
     totalScrap?: number;
+    gold?: number;
   };
 };
 
@@ -71,40 +71,32 @@ async function fetchAndParseReplay(replayUrl: string): Promise<ReplayData | null
   }
 }
 
-/** Compute stats from replay snapshots; null if replay invalid or empty. hasTotalScrap = replay has totalScrap (new format). */
+/** Compute stats from last replay snapshot. Returns null if replay invalid or missing required fields (totalDistanceM, totalScrap, gold). */
 function getReplayStats(
   replay: ReplayData
-): { distance: number; scrap: number; gold: number; hasTotalScrap: boolean } | null {
+): { distance: number; scrap: number; gold: number } | null {
   const snapshots = replay?.snapshots;
   if (!Array.isArray(snapshots) || snapshots.length === 0) return null;
 
-  let maxDistance = 0;
-  let lastGold = 0;
-  let lastTotalScrap = 0;
-  let hasTotalScrap = false;
-
-  for (const s of snapshots) {
-    const rs = s.runState;
-    if (rs && typeof rs.distanceM === "number" && rs.distanceM > maxDistance) {
-      maxDistance = rs.distanceM;
-    }
-  }
-
   const last = snapshots[snapshots.length - 1];
-  const lastRs = last?.runState;
-  if (lastRs) {
-    if (typeof lastRs.gold === "number") lastGold = lastRs.gold;
-    if (typeof lastRs.totalScrap === "number") {
-      lastTotalScrap = lastRs.totalScrap;
-      hasTotalScrap = true;
-    }
+  const rs = last?.runState;
+  if (!rs) return null;
+
+  const totalDistanceM = rs.totalDistanceM;
+  const totalScrap = rs.totalScrap;
+  const gold = rs.gold;
+  if (
+    typeof totalDistanceM !== "number" ||
+    typeof totalScrap !== "number" ||
+    typeof gold !== "number"
+  ) {
+    return null;
   }
 
   return {
-    distance: Math.round(maxDistance),
-    scrap: Math.round(lastTotalScrap),
-    gold: Math.round(lastGold),
-    hasTotalScrap,
+    distance: Math.round(totalDistanceM),
+    scrap: Math.round(totalScrap),
+    gold: Math.round(gold),
   };
 }
 
@@ -220,7 +212,7 @@ Deno.serve(async (req) => {
       400
     );
   }
-  if (replayStats.hasTotalScrap && Math.abs(replayStats.scrap - validated.scrap) > 1) {
+  if (Math.abs(replayStats.scrap - validated.scrap) > 1) {
     return jsonResponse(
       { error: "Replay verification failed: scrap does not match replay" },
       400

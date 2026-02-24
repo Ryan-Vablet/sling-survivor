@@ -39,6 +39,8 @@ export class RunState {
   gold = 0;
   /** Total scrap earned across all rounds this run (never reset until new run). */
   totalScrap = 0;
+  /** Cumulative distance (meters) across all rockets this run; used for leaderboard. */
+  totalDistanceM = 0;
   roundToll: number;
 
   currentXp = 0;

@@ -66,20 +66,53 @@ export function getLocalLeaderboard(): LeaderboardEntry[] {
   return sortByDistance(local).slice(0, TOP_N);
 }
 
-/** Global leaderboard (Supabase). Returns [] if not configured or on error. */
-export async function getGlobalLeaderboard(): Promise<LeaderboardEntry[]> {
+/** Global leaderboard (Supabase). Optional majorVersion: "all" or undefined = no filter; "0.6" = game_version like "0.6%". Returns [] if not configured or on error. */
+export async function getGlobalLeaderboard(majorVersion?: string): Promise<LeaderboardEntry[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   try {
-    const { data, error } = await supabase
+    let q = supabase
       .from(TABLE)
       .select("initials, distance, scrap, gold, summary_json, replay_url, game_version")
       .order("distance", { ascending: false })
       .limit(TOP_N);
+    if (majorVersion && majorVersion !== "all") {
+      q = q.like("game_version", `${majorVersion}%`);
+    }
+    const { data, error } = await q;
     if (error) return [];
     return (data ?? []).map((row: Record<string, unknown>) => normRow(row));
   } catch {
     return [];
+  }
+}
+
+/** Unique major versions (e.g. "0.6", "0.7") from global leaderboard for filter dropdown. First value is "all". */
+export async function getGlobalLeaderboardVersionOptions(): Promise<string[]> {
+  const supabase = getSupabase();
+  if (!supabase) return ["all"];
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select("game_version")
+      .not("game_version", "is", null);
+    if (error) return ["all"];
+    const versions = (data ?? []) as { game_version: string }[];
+    const majorSet = new Set<string>();
+    for (const r of versions) {
+      const v = String(r.game_version ?? "").trim();
+      if (!v) continue;
+      const major = v.match(/^\d+\.\d+/)?.[0] ?? v;
+      majorSet.add(major);
+    }
+    const sorted = [...majorSet].sort((a, b) => {
+      const [a1, a2] = a.split(".").map(Number);
+      const [b1, b2] = b.split(".").map(Number);
+      return a1 !== b1 ? a1 - b1 : (a2 ?? 0) - (b2 ?? 0);
+    });
+    return ["all", ...sorted];
+  } catch {
+    return ["all"];
   }
 }
 

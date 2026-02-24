@@ -1,6 +1,7 @@
 import {
   getLocalLeaderboard,
   getGlobalLeaderboard,
+  getGlobalLeaderboardVersionOptions,
   getSummaryFromEntry,
   type LeaderboardEntry,
 } from "../api/leaderboard";
@@ -17,6 +18,8 @@ export class LeaderboardOverlay {
   private el: HTMLElement | null = null;
   private entries: LeaderboardEntry[] = [];
   private mode: LeaderboardMode = "global";
+  private versionOptions: string[] = ["all"];
+  private selectedVersion = "all";
   private onViewSummary: ((summary: RunSummaryData) => void) | null = null;
   private onPlayReplay: ((replayUrl: string) => void) | null = null;
 
@@ -44,6 +47,11 @@ export class LeaderboardOverlay {
         e.stopPropagation();
         this.setMode("local");
       });
+      this.el.querySelector(".leaderboard-version-select")?.addEventListener("change", (e) => {
+        const val = (e.target as HTMLSelectElement).value;
+        this.selectedVersion = val;
+        this.refresh();
+      });
     }
     this.el.style.display = "flex";
     this.refresh();
@@ -64,11 +72,22 @@ export class LeaderboardOverlay {
   private async refresh() {
     if (!this.el) return;
     const listEl = this.el.querySelector(".leaderboard-list");
+    const versionWrap = this.el.querySelector(".leaderboard-version-wrap");
+    const versionSelect = this.el.querySelector(".leaderboard-version-select") as HTMLSelectElement | null;
     if (!listEl) return;
-    if (this.mode === "local") {
-      this.entries = getLocalLeaderboard();
+
+    if (this.mode === "global") {
+      if (versionWrap) versionWrap.style.display = "";
+      this.versionOptions = await getGlobalLeaderboardVersionOptions();
+      if (versionSelect) {
+        versionSelect.innerHTML = this.versionOptions
+          .map((v) => `<option value="${v}" ${v === this.selectedVersion ? "selected" : ""}>${v === "all" ? "All leaderboards" : `v${v}.x`}</option>`)
+          .join("");
+      }
+      this.entries = await getGlobalLeaderboard(this.selectedVersion);
     } else {
-      this.entries = await getGlobalLeaderboard();
+      if (versionWrap) versionWrap.style.display = "none";
+      this.entries = getLocalLeaderboard();
     }
     // Global tab shows only Supabase data; no local fallback
     if (this.entries.length === 0) {
@@ -196,6 +215,28 @@ export class LeaderboardOverlay {
     background: rgba(0,50,0,0.6);
     text-shadow: 0 0 8px rgba(255,204,0,0.4);
   }
+  .leaderboard-version-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .leaderboard-version-wrap label {
+    color: #6a8a6a;
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+  .leaderboard-version-select {
+    padding: 6px 10px;
+    font-size: 13px;
+    background: #0a0a14;
+    color: #aaffaa;
+    border: 1px solid #3a6a3a;
+    border-radius: 6px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .leaderboard-version-select:hover { border-color: #4a7a4a; }
   .leaderboard-head {
     display: grid;
     grid-template-columns: 32px 1fr 72px 56px 56px 120px;
@@ -271,6 +312,12 @@ export class LeaderboardOverlay {
   <div class="leaderboard-tabs">
     <button type="button" class="leaderboard-tab leaderboard-tab-global active">Global</button>
     <button type="button" class="leaderboard-tab leaderboard-tab-local">Local</button>
+  </div>
+  <div class="leaderboard-version-wrap" style="display:none;">
+    <label for="leaderboard-version">Version:</label>
+    <select id="leaderboard-version" class="leaderboard-version-select" aria-label="Filter by game version">
+      <option value="all">All leaderboards</option>
+    </select>
   </div>
   <div class="leaderboard-head"><span>#</span><span>INITIALS</span><span>DIST</span><span>SCRAP</span><span>GOLD</span><span></span></div>
   <div class="leaderboard-list">Loading…</div>
