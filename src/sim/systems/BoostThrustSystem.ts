@@ -1,12 +1,12 @@
 import type { Player } from "../entities";
-import type { Keyboard } from "../../core/input/Keyboard";
+import type { IThrustInput } from "../../core/input/ThrustInput";
 import type { DerivedPlayerStats } from "../runtime/RunState";
 
 export class BoostThrustSystem {
-  step(player: Player, kb: Keyboard, stats: DerivedPlayerStats, dt: number) {
+  step(player: Player, input: IThrustInput, stats: DerivedPlayerStats, dt: number) {
     if (!player.launched) return;
 
-    const axis = kb.getAxis();
+    const axis = input.getAxis();
     const ax = axis.x;
     const ay = axis.y;
 

@@ -6,6 +6,7 @@ import { Camera2D } from "../../render/Camera2D";
 import { assetUrl, getRocketTexture, getUfoTexture, loadAssets } from "../../render/assets";
 import { Keyboard } from "../../core/input/Keyboard";
 import { PointerDrag } from "../../core/input/PointerDrag";
+import { CombinedThrustInput } from "../../core/input/ThrustInput";
 import { TUNING } from "../../content/tuning";
 import type { Drone, Player, Projectile, EnemyBullet, WorldCoin } from "../../sim/entities";
 import { PhysicsWorld } from "../../sim/world/PhysicsWorld";
@@ -64,6 +65,7 @@ export class RunScene implements IScene {
 
   private kb!: Keyboard;
   private drag!: PointerDrag;
+  private thrustInput!: CombinedThrustInput;
 
   private world = new PhysicsWorld();
   private thrust = new BoostThrustSystem();
@@ -160,6 +162,11 @@ export class RunScene implements IScene {
 
     this.kb = new Keyboard(window);
     this.drag = new PointerDrag(app.canvas);
+    this.thrustInput = new CombinedThrustInput(
+      this.kb,
+      this.drag.state,
+      () => this.player.launched
+    );
 
     await loadAssets();
     const rocketTex = getRocketTexture();
@@ -489,7 +496,7 @@ export class RunScene implements IScene {
 
     const ps = this.runState.playerStats;
 
-    this.thrust.step(this.player, this.kb, ps, dt);
+    this.thrust.step(this.player, this.thrustInput, ps, dt);
     this.world.stepPlayer(this.player, dt);
 
     const distanceM = Math.max(
@@ -1163,7 +1170,7 @@ export class RunScene implements IScene {
     this.gfxThrustFlame.clear();
     if (!this.player.launched) return;
 
-    const axis = this.kb.getAxis();
+    const axis = this.thrustInput.getAxis();
     const thrusting = (axis.x !== 0 || axis.y !== 0) && this.player.boost > 0;
     if (!thrusting) return;
 

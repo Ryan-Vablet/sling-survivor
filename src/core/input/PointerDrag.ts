@@ -11,14 +11,16 @@ export class PointerDrag {
   state: DragState = { isDragging: false, released: false, startX: 0, startY: 0, x: 0, y: 0 };
 
   constructor(private el: HTMLElement) {
-    el.addEventListener("pointerdown", this.onDown);
-    el.addEventListener("pointermove", this.onMove);
+    el.style.touchAction = "none";
+    el.addEventListener("pointerdown", this.onDown, { passive: false });
+    el.addEventListener("pointermove", this.onMove, { passive: false });
     el.addEventListener("pointerup", this.onUp);
     el.addEventListener("pointercancel", this.onUp);
     el.addEventListener("lostpointercapture", this.onUp as any);
   }
 
   private onDown = (e: PointerEvent) => {
+    e.preventDefault();
     this.el.setPointerCapture(e.pointerId);
     this.state.isDragging = true;
     this.state.startX = e.clientX;
@@ -29,6 +31,7 @@ export class PointerDrag {
 
   private onMove = (e: PointerEvent) => {
     if (!this.state.isDragging) return;
+    e.preventDefault();
     this.state.x = e.clientX;
     this.state.y = e.clientY;
   };
