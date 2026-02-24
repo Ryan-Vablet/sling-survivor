@@ -102,16 +102,18 @@ export class LeaderboardOverlay {
         : "No scores yet. Play to get on the board!";
       listEl.innerHTML = `<div class="leaderboard-empty">${emptyMsg}</div>`;
     } else {
-    const replayUrlForEntry = (e: LeaderboardEntry) =>
-      e.replayUrl ?? getSummaryFromEntry(e)?.replayUrl ?? "";
+    const replayLinkForEntry = (e: LeaderboardEntry) =>
+      this.mode === "local" && e.localReplayId
+        ? `local:${e.localReplayId}`
+        : (e.replayUrl ?? getSummaryFromEntry(e)?.replayUrl ?? "");
 
     const isCheatersView = this.mode === "global" && this.selectedVersion === "h4x0rs";
     listEl.innerHTML = this.entries
       .map((e, i) => {
-        const replayUrl = replayUrlForEntry(e);
+        const replayLink = replayLinkForEntry(e);
         const replayBtn =
-          replayUrl && this.onPlayReplay
-            ? `<button type="button" class="leaderboard-replay-btn" data-index="${i}" data-replay-url="${replayUrl.replace(/"/g, "&quot;")}">Replay</button>`
+          replayLink && this.onPlayReplay
+            ? `<button type="button" class="leaderboard-replay-btn" data-index="${i}" data-replay-url="${replayLink.replace(/"/g, "&quot;")}">Replay</button>`
             : "";
         const goldDisplay = e.totalGoldEarned != null ? e.totalGoldEarned : e.gold;
         const rowClass = isCheatersView ? "leaderboard-row leaderboard-cheater-row" : "leaderboard-row";

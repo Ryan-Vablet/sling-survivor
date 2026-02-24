@@ -49,15 +49,16 @@ export function getLocalReplayData(id: string): ReplayData | null {
   return entry.replay;
 }
 
-/** Save a run's replay locally. Keeps only the last MAX_SAVED runs. */
+/** Save a run's replay locally. Keeps only the last MAX_SAVED runs. Returns the replay id, or undefined if not saved. */
 export function saveLocalReplay(
   replay: ReplayData,
   meta: { distanceM: number }
-): void {
-  if (!replay?.snapshots?.length) return;
+): string | undefined {
+  if (!replay?.snapshots?.length) return undefined;
   const entries = getStored();
+  const id = crypto.randomUUID();
   const entry: StoredEntry = {
-    id: crypto.randomUUID(),
+    id,
     savedAt: Date.now(),
     distanceM: meta.distanceM,
     replay,
@@ -66,4 +67,5 @@ export function saveLocalReplay(
     .sort((a, b) => b.savedAt - a.savedAt)
     .slice(0, MAX_SAVED);
   setStored(next);
+  return id;
 }

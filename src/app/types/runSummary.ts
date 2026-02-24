@@ -32,6 +32,8 @@ export type RunSummaryData = {
   gameVersion?: string;
   /** Client-side score derived from run stats (not stored in DB). */
   score?: number;
+  /** Id of replay in local storage (set when saveLocalReplay runs); used to link local leaderboard entry to replay. */
+  localReplayId?: string;
 };
 
 /**

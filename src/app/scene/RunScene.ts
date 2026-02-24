@@ -899,7 +899,10 @@ export class RunScene implements IScene {
         };
         summaryData.score = computeRunScore(summaryData);
         const replay = summaryData.replayPayload;
-        if (replay) saveLocalReplay(replay, { distanceM: this.runState.totalDistanceM });
+        if (replay) {
+          const id = saveLocalReplay(replay, { distanceM: this.runState.totalDistanceM });
+          if (id) summaryData.localReplayId = id;
+        }
         this.scenes.data.summaryData = summaryData;
         this.end.setText(
           `GAME OVER\n\nTotal distance: ${Math.round(this.runState.totalDistanceM)} m\n\nClick to continue`
@@ -936,6 +939,7 @@ export class RunScene implements IScene {
             summary: summaryData,
             replayUrl: summaryData.replayUrl,
             gameVersion: summaryData.gameVersion,
+            localReplayId: summaryData.localReplayId,
           };
           summaryData.highScoreAchieved = {
             initials,

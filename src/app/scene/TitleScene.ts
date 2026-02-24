@@ -2,6 +2,7 @@ import { AnimatedSprite, Assets, Container, Graphics, Rectangle, Sprite, Text, T
 import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
 import { assetUrl } from "../../render/assets";
+import { getLocalReplayData } from "../replay/localReplays";
 import { HelpOverlay } from "../../ui/HelpOverlay";
 import { LeaderboardOverlay } from "../../ui/LeaderboardOverlay";
 import { LocalReplaysOverlay } from "../../ui/LocalReplaysOverlay";
@@ -89,8 +90,18 @@ export class TitleScene implements IScene {
           this.scenes.data.summaryData = summary;
           this.scenes.switchTo("summary");
         },
-        (replayUrl) => {
-          this.scenes.data.replayUrl = replayUrl;
+        (replayUrlOrLocalId) => {
+          if (replayUrlOrLocalId.startsWith("local:")) {
+            const id = replayUrlOrLocalId.slice(6);
+            const data = getLocalReplayData(id);
+            if (data) {
+              this.scenes.data.replayData = data;
+              this.scenes.data.replayUrl = undefined;
+            }
+          } else {
+            this.scenes.data.replayUrl = replayUrlOrLocalId;
+            this.scenes.data.replayData = undefined;
+          }
           this.scenes.switchTo("replay");
         }
       );

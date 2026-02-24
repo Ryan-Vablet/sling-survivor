@@ -30,6 +30,8 @@ export type LeaderboardEntry = {
   gameVersion?: string;
   /** True if flagged as cheater; excluded from normal global leaderboard, shown in h4x0rs. */
   cheater?: boolean;
+  /** Local only: id of replay in local storage (use with getLocalReplayData). Enables Replay button on local leaderboard. */
+  localReplayId?: string;
 };
 
 /** Backward compat: treat legacy "score" as distance when present. */
@@ -47,6 +49,7 @@ function normRow(row: Record<string, unknown>): LeaderboardEntry {
     replayUrl: row.replay_url != null ? String(row.replay_url) : undefined,
     gameVersion: row.game_version != null ? String(row.game_version) : undefined,
     cheater: row.cheater === true,
+    localReplayId: typeof row.localReplayId === "string" ? row.localReplayId : undefined,
   };
 }
 
@@ -176,6 +179,7 @@ function makeEntry(
     summary?: RunSummaryData;
     replayUrl?: string;
     gameVersion?: string;
+    localReplayId?: string;
   }
 ): LeaderboardEntry {
   const summaryJson = payload.summary ? JSON.stringify(payload.summary) : undefined;
@@ -188,6 +192,7 @@ function makeEntry(
     summaryJson,
     replayUrl: payload.replayUrl,
     gameVersion: payload.gameVersion,
+    localReplayId: payload.localReplayId,
   };
 }
 
