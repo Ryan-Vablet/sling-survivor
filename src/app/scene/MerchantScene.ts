@@ -62,6 +62,9 @@ export class MerchantScene implements IScene {
   private continueBtnBaseY = 0;
   private viewW = 0;
   private viewH = 0;
+  private goldContainer!: Container;
+  private dimOverlay!: Graphics;
+  private rerollBtn!: Container;
 
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
@@ -90,10 +93,10 @@ export class MerchantScene implements IScene {
       this.root.addChildAt(fallback, 0);
     }
 
-    const dimOverlay = new Graphics();
-    dimOverlay.rect(0, 0, w, h);
-    dimOverlay.fill({ color: 0x000000, alpha: 0.45 });
-    this.root.addChild(dimOverlay);
+    this.dimOverlay = new Graphics();
+    this.dimOverlay.rect(0, 0, w, h);
+    this.dimOverlay.fill({ color: 0x000000, alpha: 0.45 });
+    this.root.addChild(this.dimOverlay);
 
     await this.buildGoldDisplay(w);
 
@@ -141,7 +144,7 @@ export class MerchantScene implements IScene {
   }
 
   private async buildGoldDisplay(viewW: number) {
-    const goldContainer = new Container();
+    this.goldContainer = new Container();
 
     try {
       const sheetTex = await Assets.load<Texture>(assetUrl("/coin_flip_sheet.png"));
@@ -181,11 +184,11 @@ export class MerchantScene implements IScene {
     this.goldText.anchor.set(0, 0.5);
     this.goldText.x = 0;
     this.goldText.y = 0;
-    goldContainer.addChild(this.goldText);
+    this.goldContainer.addChild(this.goldText);
 
-    goldContainer.x = viewW - 30 - this.goldText.width;
-    goldContainer.y = 40;
-    this.root.addChild(goldContainer);
+    this.goldContainer.x = viewW - 30 - this.goldText.width;
+    this.goldContainer.y = 40;
+    this.root.addChild(this.goldContainer);
   }
 
   private generateShop() {
@@ -491,6 +494,7 @@ export class MerchantScene implements IScene {
       bg.tint = 0xffffff;
     });
 
+    this.rerollBtn = btn;
     this.root.addChild(btn);
   }
 
@@ -578,5 +582,31 @@ export class MerchantScene implements IScene {
     this.bg.scale.set(scale);
     this.bg.x = (viewW - tex.width * scale) / 2;
     this.bg.y = 0;
+  }
+
+  resize(w: number, h: number): void {
+    this.viewW = w;
+    this.viewH = h;
+    this.coverFit(w, h);
+    this.dimOverlay.clear();
+    this.dimOverlay.rect(0, 0, w, h);
+    this.dimOverlay.fill({ color: 0x000000, alpha: 0.45 });
+    this.goldContainer.x = w - 30 - this.goldText.width;
+    this.goldContainer.y = 40;
+    const totalW = COLS * CARD_W + (COLS - 1) * CARD_GAP;
+    const totalH = 2 * CARD_H + CARD_GAP;
+    const startX = (w - totalW) / 2;
+    const startY = (h - totalH) / 2 - 20;
+    for (let i = 0; i < this.cards.length; i++) {
+      const row = Math.floor(i / COLS);
+      const col = i % COLS;
+      this.cards[i].x = startX + col * (CARD_W + CARD_GAP);
+      this.cards[i].y = startY + row * (CARD_H + CARD_GAP);
+    }
+    this.rerollBtn.x = startX + totalW - 38 / 2 + 4;
+    this.rerollBtn.y = startY + totalH + 14 + 38 / 2;
+    this.continueBtn.x = w / 2;
+    this.continueBtn.y = h - 70;
+    this.continueBtnBaseY = this.continueBtn.y;
   }
 }

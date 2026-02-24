@@ -7,6 +7,7 @@ type SceneFactory = () => IScene;
 
 export class SceneManager {
   private app: Application;
+  private root: HTMLElement;
   private debug: Debug;
   private factories = new Map<string, SceneFactory>();
   private current: IScene | null = null;
@@ -16,8 +17,9 @@ export class SceneManager {
 
   private loop: FixedTimestepLoop;
 
-  constructor(app: Application, debug: Debug) {
+  constructor(app: Application, root: HTMLElement, debug: Debug) {
     this.app = app;
+    this.root = root;
     this.debug = debug;
 
     this.loop = new FixedTimestepLoop({
@@ -32,6 +34,28 @@ export class SceneManager {
       const dt = this.app.ticker.deltaMS / 1000;
       this.loop.tick(dt);
     });
+
+    // Notify current scene when canvas size changes. Use ResizeObserver on the app root
+    // (same element as Pixi's resizeTo) so we react when the container actually changes size,
+    // e.g. on mobile rotate. Defer with double rAF so Pixi's resize has been applied.
+    let resizeScheduled = false;
+    const runResize = () => {
+      const w = this.app.renderer.width;
+      const h = this.app.renderer.height;
+      this.current?.resize?.(w, h);
+      resizeScheduled = false;
+    };
+    const scheduleResize = () => {
+      if (resizeScheduled) return;
+      resizeScheduled = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(runResize);
+      });
+    };
+    const resizeObserver = new ResizeObserver(scheduleResize);
+    resizeObserver.observe(root);
+    window.addEventListener("resize", scheduleResize);
+    window.addEventListener("orientationchange", scheduleResize);
   }
 
   getApp() { return this.app; }

@@ -109,7 +109,6 @@ export class RunScene implements IScene {
   private nextCoinClusterX = 0;
 
   private stars: Star[] = [];
-  private resizeHandler: (() => void) | null = null;
   private endClickHandler: (() => void) | null = null;
   private debugKeyHandler: (() => void) | null = null;
   private freshReset = false;
@@ -193,17 +192,7 @@ export class RunScene implements IScene {
     await this.loadCoinFrames();
     this.initStars();
 
-    this.resizeHandler = () => {
-      const w = app.renderer.width;
-      const h = app.renderer.height;
-      this.hud.resize(w);
-      this.end.layout(w, h);
-      this.upgradeOverlay.layout(w, h);
-      this.toast.layout(w, h);
-      this.layoutVirtualJoystick(w, h);
-    };
-    window.addEventListener("resize", this.resizeHandler);
-    this.resizeHandler();
+    this.resize(app.renderer.width, app.renderer.height);
 
     const onDbgKey = (e: KeyboardEvent) => {
       if (this.ended || this.runState.paused) return;
@@ -230,11 +219,15 @@ export class RunScene implements IScene {
       window.removeEventListener("keydown", onDbgKey);
   }
 
+  resize(w: number, h: number): void {
+    this.hud.resize(w);
+    this.end.layout(w, h);
+    this.upgradeOverlay.layout(w, h);
+    this.toast.layout(w, h);
+    this.layoutVirtualJoystick(w, h);
+  }
+
   exit(): void {
-    if (this.resizeHandler) {
-      window.removeEventListener("resize", this.resizeHandler);
-      this.resizeHandler = null;
-    }
     if (this.endClickHandler) {
       this.scenes
         .getApp()

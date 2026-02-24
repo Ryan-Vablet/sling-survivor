@@ -17,6 +17,9 @@ export class TitleScene implements IScene {
   private elapsed = 0;
   private btn!: Container;
   private btnBaseY = 0;
+  private helpBtn!: Container;
+  private myReplaysBtn!: Container;
+  private leaderboardBtn!: Container;
   private bg: Sprite | null = null;
   private coin: AnimatedSprite | null = null;
   private helpOverlay = new HelpOverlay();
@@ -52,39 +55,39 @@ export class TitleScene implements IScene {
     this.btn.on("pointerout", () => {});
 
     const bottomRowY = h - bottomPadding - smallButtonH / 2;
-    const helpBtn = this.buildBevelButton("HOW TO PLAY", { blue: true, small: true });
-    helpBtn.x = centerX;
-    helpBtn.y = bottomRowY - 2 * (smallButtonH + bottomButtonGap);
-    this.root.addChild(helpBtn);
-    helpBtn.eventMode = "static";
-    helpBtn.cursor = "pointer";
-    helpBtn.on("pointerdown", () => this.helpOverlay.show(w, h));
-    helpBtn.on("pointerover", () => helpBtn.scale.set(1.04));
-    helpBtn.on("pointerout", () => helpBtn.scale.set(1));
+    this.helpBtn = this.buildBevelButton("HOW TO PLAY", { blue: true, small: true });
+    this.helpBtn.x = centerX;
+    this.helpBtn.y = bottomRowY - 2 * (smallButtonH + bottomButtonGap);
+    this.root.addChild(this.helpBtn);
+    this.helpBtn.eventMode = "static";
+    this.helpBtn.cursor = "pointer";
+    this.helpBtn.on("pointerdown", () => this.helpOverlay.show(w, h));
+    this.helpBtn.on("pointerover", () => this.helpBtn.scale.set(1.04));
+    this.helpBtn.on("pointerout", () => this.helpBtn.scale.set(1));
 
-    const myReplaysBtn = this.buildBevelButton("MY REPLAYS", { blue: true, small: true });
-    myReplaysBtn.x = centerX;
-    myReplaysBtn.y = bottomRowY - (smallButtonH + bottomButtonGap);
-    this.root.addChild(myReplaysBtn);
-    myReplaysBtn.eventMode = "static";
-    myReplaysBtn.cursor = "pointer";
-    myReplaysBtn.on("pointerdown", () => {
+    this.myReplaysBtn = this.buildBevelButton("MY REPLAYS", { blue: true, small: true });
+    this.myReplaysBtn.x = centerX;
+    this.myReplaysBtn.y = bottomRowY - (smallButtonH + bottomButtonGap);
+    this.root.addChild(this.myReplaysBtn);
+    this.myReplaysBtn.eventMode = "static";
+    this.myReplaysBtn.cursor = "pointer";
+    this.myReplaysBtn.on("pointerdown", () => {
       this.localReplaysOverlay.show((replayData) => {
         this.scenes.data.replayData = replayData;
         this.scenes.data.replayUrl = undefined;
         this.scenes.switchTo("replay");
       });
     });
-    myReplaysBtn.on("pointerover", () => myReplaysBtn.scale.set(1.04));
-    myReplaysBtn.on("pointerout", () => myReplaysBtn.scale.set(1));
+    this.myReplaysBtn.on("pointerover", () => this.myReplaysBtn.scale.set(1.04));
+    this.myReplaysBtn.on("pointerout", () => this.myReplaysBtn.scale.set(1));
 
-    const leaderboardBtn = this.buildBevelButton("LEADERBOARDS", { blue: true, small: true });
-    leaderboardBtn.x = centerX;
-    leaderboardBtn.y = bottomRowY;
-    this.root.addChild(leaderboardBtn);
-    leaderboardBtn.eventMode = "static";
-    leaderboardBtn.cursor = "pointer";
-    leaderboardBtn.on("pointerdown", () => {
+    this.leaderboardBtn = this.buildBevelButton("LEADERBOARDS", { blue: true, small: true });
+    this.leaderboardBtn.x = centerX;
+    this.leaderboardBtn.y = bottomRowY;
+    this.root.addChild(this.leaderboardBtn);
+    this.leaderboardBtn.eventMode = "static";
+    this.leaderboardBtn.cursor = "pointer";
+    this.leaderboardBtn.on("pointerdown", () => {
       this.leaderboardOverlay.show(
         (summary) => {
           this.scenes.data.summaryData = summary;
@@ -106,8 +109,8 @@ export class TitleScene implements IScene {
         }
       );
     });
-    leaderboardBtn.on("pointerover", () => leaderboardBtn.scale.set(1.04));
-    leaderboardBtn.on("pointerout", () => leaderboardBtn.scale.set(1));
+    this.leaderboardBtn.on("pointerover", () => this.leaderboardBtn.scale.set(1.04));
+    this.leaderboardBtn.on("pointerout", () => this.leaderboardBtn.scale.set(1));
 
     // Load background async — inserts behind button when ready
     Assets.load<any>(assetUrl("/title_mockup.png")).then((texture) => {
@@ -165,6 +168,28 @@ export class TitleScene implements IScene {
 
     // Very subtle tilt
     this.btn.rotation = Math.sin(this.elapsed * 1.1) * 0.02;
+  }
+
+  resize(w: number, h: number): void {
+    const centerX = w / 2;
+    const launchY = h * 0.62;
+    const bottomPadding = 12;
+    const smallButtonH = 48;
+    const bottomButtonGap = 28;
+    const bottomRowY = h - bottomPadding - smallButtonH / 2;
+
+    this.btn.x = centerX;
+    this.btn.y = launchY;
+    this.btnBaseY = launchY;
+
+    this.helpBtn.x = centerX;
+    this.helpBtn.y = bottomRowY - 2 * (smallButtonH + bottomButtonGap);
+    this.myReplaysBtn.x = centerX;
+    this.myReplaysBtn.y = bottomRowY - (smallButtonH + bottomButtonGap);
+    this.leaderboardBtn.x = centerX;
+    this.leaderboardBtn.y = bottomRowY;
+
+    this.coverFit(w, h);
   }
 
   /** Scale the background sprite to cover the full viewport (may crop). */

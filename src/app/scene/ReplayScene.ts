@@ -75,7 +75,6 @@ export class ReplayScene implements IScene {
   private upgradeShowEndRealT = -1;
   private gameOverShown = false;
   private endClickHandler: (() => void) | null = null;
-  private resizeHandler: (() => void) | null = null;
   /** Playback speed multiplier (1 or 2). */
   private playbackSpeed = 1;
   private speedKeyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -160,16 +159,7 @@ export class ReplayScene implements IScene {
     await this.loadCoinFrames();
     this.initStars();
 
-    this.resizeHandler = () => {
-      const w = app.renderer.width;
-      const h = app.renderer.height;
-      this.hud.resize(w);
-      this.end.layout(w, h);
-      this.upgradeOverlay.layout(w, h);
-      this.speedLabel.y = h - 28;
-    };
-    window.addEventListener("resize", this.resizeHandler);
-    this.resizeHandler();
+    this.resize(app.renderer.width, app.renderer.height);
 
     this.speedKeyHandler = (e: KeyboardEvent) => {
       if (e.key === "s" || e.key === "S") {
@@ -180,8 +170,14 @@ export class ReplayScene implements IScene {
     window.addEventListener("keydown", this.speedKeyHandler);
   }
 
+  resize(w: number, h: number): void {
+    this.hud.resize(w);
+    this.end.layout(w, h);
+    this.upgradeOverlay.layout(w, h);
+    this.speedLabel.y = h - 28;
+  }
+
   exit(): void {
-    window.removeEventListener("resize", this.resizeHandler!);
     if (this.speedKeyHandler) {
       window.removeEventListener("keydown", this.speedKeyHandler);
       this.speedKeyHandler = null;

@@ -20,7 +20,7 @@ export async function createApp(root: HTMLElement) {
   initGoldModeOverlay();
 
   const debug = new Debug();
-  const scenes = new SceneManager(app, debug);
+  const scenes = new SceneManager(app, root, debug);
 
   scenes.register("title", () => new TitleScene(scenes));
   scenes.register("run", () => new RunScene(scenes));

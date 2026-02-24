@@ -133,6 +133,11 @@ export class SummaryScene implements IScene {
     app.canvas.addEventListener("pointerdown", this.clickHandler);
   }
 
+  resize(w: number, h: number): void {
+    this.layout(w, h);
+    this.coverPlaceholder(w, h);
+  }
+
   update(dt: number): void {
     this.elapsed += dt;
     if (this.highScoreText) {
