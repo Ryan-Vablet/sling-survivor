@@ -18,7 +18,6 @@ type LeaderboardMode = "global" | "local";
 export class LeaderboardOverlay {
   private el: HTMLElement | null = null;
   private entries: LeaderboardEntry[] = [];
-  private cheaterEntries: LeaderboardEntry[] = [];
   private mode: LeaderboardMode = "global";
   private versionOptions: string[] = ["all"];
   private selectedVersion = "all";
@@ -82,24 +81,31 @@ export class LeaderboardOverlay {
       if (versionWrap) versionWrap.style.display = "";
       this.versionOptions = await getGlobalLeaderboardVersionOptions();
       if (versionSelect) {
-        versionSelect.innerHTML = this.versionOptions
+        const options = this.versionOptions
           .map((v) => `<option value="${v}" ${v === this.selectedVersion ? "selected" : ""}>${v === "all" ? "All leaderboards" : `v${v}.x`}</option>`)
           .join("");
+        versionSelect.innerHTML = options + `<option value="h4x0rs" ${this.selectedVersion === "h4x0rs" ? "selected" : ""}>h4x0rs</option>`;
       }
-      this.entries = await getGlobalLeaderboard(this.selectedVersion);
-      this.cheaterEntries = await getGlobalLeaderboardCheaters();
+      if (this.selectedVersion === "h4x0rs") {
+        this.entries = await getGlobalLeaderboardCheaters();
+      } else {
+        this.entries = await getGlobalLeaderboard(this.selectedVersion);
+      }
     } else {
       if (versionWrap) versionWrap.style.display = "none";
       this.entries = getLocalLeaderboard();
-      this.cheaterEntries = [];
     }
     // Global tab shows only Supabase data; no local fallback
     if (this.entries.length === 0) {
-      listEl.innerHTML = `<div class="leaderboard-empty">No scores yet. Play to get on the board!</div>`;
+      const emptyMsg = this.mode === "global" && this.selectedVersion === "h4x0rs"
+        ? "No flagged entries."
+        : "No scores yet. Play to get on the board!";
+      listEl.innerHTML = `<div class="leaderboard-empty">${emptyMsg}</div>`;
     } else {
     const replayUrlForEntry = (e: LeaderboardEntry) =>
       e.replayUrl ?? getSummaryFromEntry(e)?.replayUrl ?? "";
 
+    const isCheatersView = this.mode === "global" && this.selectedVersion === "h4x0rs";
     listEl.innerHTML = this.entries
       .map((e, i) => {
         const replayUrl = replayUrlForEntry(e);
@@ -107,14 +113,14 @@ export class LeaderboardOverlay {
           replayUrl && this.onPlayReplay
             ? `<button type="button" class="leaderboard-replay-btn" data-index="${i}" data-replay-url="${replayUrl.replace(/"/g, "&quot;")}">Replay</button>`
             : "";
-        const earned = e.totalGoldEarned != null ? e.totalGoldEarned : "—";
-        return `<div class="leaderboard-row" data-index="${i}">
+        const goldDisplay = e.totalGoldEarned != null ? e.totalGoldEarned : e.gold;
+        const rowClass = isCheatersView ? "leaderboard-row leaderboard-cheater-row" : "leaderboard-row";
+        return `<div class="${rowClass}" data-index="${i}">
             <span class="rank">${i + 1}</span>
             <span class="initials">${e.initials}</span>
             <span class="stat">${Math.round(e.distance)} m</span>
             <span class="stat">${e.scrap}</span>
-            <span class="stat">${e.gold}</span>
-            <span class="stat">${earned}</span>
+            <span class="stat">${goldDisplay}</span>
             <span class="leaderboard-actions">
               <button type="button" class="leaderboard-view-btn" data-index="${i}">View</button>
               ${replayBtn}
@@ -161,77 +167,6 @@ export class LeaderboardOverlay {
         this.onPlayReplay(url);
       });
     });
-    }
-    // h4x0rs section (global only, when there are flagged cheaters)
-    const cheatersWrap = this.el.querySelector(".leaderboard-cheaters-wrap") as HTMLElement | null;
-    const cheatersList = this.el.querySelector(".leaderboard-cheaters-list") as HTMLElement | null;
-    if (cheatersWrap && cheatersList) {
-      if (this.mode === "global" && this.cheaterEntries.length > 0) {
-        cheatersWrap.style.display = "";
-        const replayUrlForEntry = (e: LeaderboardEntry) =>
-          e.replayUrl ?? getSummaryFromEntry(e)?.replayUrl ?? "";
-        cheatersList.innerHTML = this.cheaterEntries
-          .map((e, i) => {
-            const earned = e.totalGoldEarned != null ? e.totalGoldEarned : "—";
-            const replayUrl = replayUrlForEntry(e);
-            const replayBtn =
-              replayUrl && this.onPlayReplay
-                ? `<button type="button" class="leaderboard-replay-btn leaderboard-cheater-replay" data-replay-url="${replayUrl.replace(/"/g, "&quot;")}">Replay</button>`
-                : "";
-            return `<div class="leaderboard-row leaderboard-cheater-row">
-              <span class="rank">${i + 1}</span>
-              <span class="initials">${e.initials}</span>
-              <span class="stat">${Math.round(e.distance)} m</span>
-              <span class="stat">${e.scrap}</span>
-              <span class="stat">${e.gold}</span>
-              <span class="stat">${earned}</span>
-              <span class="leaderboard-actions">
-                <button type="button" class="leaderboard-view-btn" data-cheater-index="${i}">View</button>
-                ${replayBtn}
-              </span>
-            </div>`;
-          })
-          .join("");
-        cheatersList.querySelectorAll(".leaderboard-view-btn[data-cheater-index]").forEach((btn) => {
-          btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const idx = parseInt((e.currentTarget as HTMLElement).dataset.cheaterIndex ?? "-1", 10);
-            if (idx < 0 || !this.onViewSummary) return;
-            const entry = this.cheaterEntries[idx];
-            const summary = getSummaryFromEntry(entry);
-            if (summary) {
-              this.hide();
-              this.onViewSummary(summary);
-            } else {
-              this.onViewSummary({
-                initials: entry.initials,
-                distanceM: entry.distance,
-                scrap: entry.scrap,
-                gold: entry.gold,
-                totalGoldEarned: entry.totalGoldEarned ?? entry.gold,
-                round: 0,
-                totalKills: 0,
-                level: 0,
-                upgrades: [],
-                evolutions: [],
-                artifacts: [],
-              });
-              this.hide();
-            }
-          });
-        });
-        cheatersList.querySelectorAll(".leaderboard-cheater-replay").forEach((btn) => {
-          btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const url = (e.currentTarget as HTMLElement).dataset.replayUrl;
-            if (!url || !this.onPlayReplay) return;
-            this.hide();
-            this.onPlayReplay(url);
-          });
-        });
-      } else {
-        cheatersWrap.style.display = "none";
-      }
     }
   }
 
@@ -317,19 +252,25 @@ export class LeaderboardOverlay {
   .leaderboard-version-select:hover { border-color: #4a7a4a; }
   .leaderboard-head {
     display: grid;
-    grid-template-columns: 32px 1fr 72px 56px 56px 120px;
+    grid-template-columns: 32px 1fr 72px 56px 56px 100px;
     gap: 8px;
     align-items: center;
     color: #6a8a6a;
     font-size: 12px;
     letter-spacing: 2px;
     margin-bottom: 8px;
-    padding: 0 8px;
+    padding: 8px 12px;
   }
+  .leaderboard-head span:nth-child(1) { text-align: center; }
+  .leaderboard-head span:nth-child(2) { text-align: center; }
+  .leaderboard-head span:nth-child(3),
+  .leaderboard-head span:nth-child(4),
+  .leaderboard-head span:nth-child(5) { text-align: right; }
+  .leaderboard-head span:nth-child(6) { text-align: left; }
   .leaderboard-list { min-height: 200px; }
   .leaderboard-row {
     display: grid;
-    grid-template-columns: 32px 1fr 72px 56px 56px 120px;
+    grid-template-columns: 32px 1fr 72px 56px 56px 100px;
     gap: 8px;
     align-items: center;
     padding: 8px 12px;
@@ -339,7 +280,7 @@ export class LeaderboardOverlay {
     color: #aaffaa;
     font-size: 16px;
   }
-  .leaderboard-row .rank { color: #ffcc00; }
+  .leaderboard-row .rank { color: #ffcc00; text-align: center; }
   .leaderboard-row .initials { letter-spacing: 3px; text-align: center; }
   .leaderboard-row .stat { color: #00ff88; text-align: right; }
   .leaderboard-view-btn {
@@ -353,7 +294,7 @@ export class LeaderboardOverlay {
     font-family: inherit;
   }
   .leaderboard-view-btn:hover { background: #3a5a3a; }
-  .leaderboard-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .leaderboard-actions { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; }
   .leaderboard-replay-btn {
     padding: 4px 8px;
     font-size: 11px;
@@ -370,18 +311,6 @@ export class LeaderboardOverlay {
     text-align: center;
     padding: 40px 20px;
     font-size: 14px;
-  }
-  .leaderboard-cheaters-wrap {
-    margin-top: 20px;
-    padding-top: 16px;
-    border-top: 1px solid #4a2a2a;
-  }
-  .leaderboard-cheaters-title {
-    color: #aa4444;
-    font-size: 14px;
-    letter-spacing: 2px;
-    margin: 0 0 10px 0;
-    text-shadow: 0 0 8px rgba(170,68,68,0.4);
   }
   .leaderboard-cheater-row {
     background: rgba(40,0,0,0.35);
@@ -415,12 +344,8 @@ export class LeaderboardOverlay {
       <option value="all">All leaderboards</option>
     </select>
   </div>
-  <div class="leaderboard-head"><span>#</span><span>INITIALS</span><span>DIST</span><span>SCRAP</span><span>GOLD</span><span>EARNED</span><span></span></div>
+  <div class="leaderboard-head"><span>#</span><span>WHO</span><span>DIST</span><span>SCRAP</span><span>GOLD</span><span></span></div>
   <div class="leaderboard-list">Loading…</div>
-  <div class="leaderboard-cheaters-wrap" style="display:none;">
-    <h4 class="leaderboard-cheaters-title">h4x0rs</h4>
-    <div class="leaderboard-cheaters-list"></div>
-  </div>
   <button type="button" class="leaderboard-overlay-close">Close</button>
 </div>
 `;
