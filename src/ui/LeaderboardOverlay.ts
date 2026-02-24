@@ -5,6 +5,7 @@ import {
   type LeaderboardEntry,
 } from "../api/leaderboard";
 import type { RunSummaryData } from "../app/types/runSummary";
+import { isMobileDevice } from "../core/device";
 
 type LeaderboardMode = "global" | "local";
 
@@ -31,7 +32,7 @@ export class LeaderboardOverlay {
       this.el.innerHTML = this.markup();
       document.body.appendChild(this.el);
 
-      this.el.querySelector(".leaderboard-overlay-backdrop")?.addEventListener("click", () => this.hide());
+      if (!isMobileDevice()) this.el.querySelector(".leaderboard-overlay-backdrop")?.addEventListener("click", () => this.hide());
       this.el.querySelector(".leaderboard-overlay-close")?.addEventListener("click", () => this.hide());
       this.el.querySelector(".leaderboard-panel")?.addEventListener("click", (e) => e.stopPropagation());
 

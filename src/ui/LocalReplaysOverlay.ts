@@ -1,5 +1,6 @@
 import { getLocalReplays, getLocalReplayData } from "../app/replay/localReplays";
 import type { ReplayData } from "../app/replay/replayTypes";
+import { isMobileDevice } from "../core/device";
 
 function formatWhen(savedAt: number): string {
   const d = new Date(savedAt);
@@ -33,7 +34,7 @@ export class LocalReplaysOverlay {
       this.el.className = "local-replays-overlay";
       this.el.innerHTML = this.markup();
       document.body.appendChild(this.el);
-      this.el.querySelector(".local-replays-backdrop")?.addEventListener("click", () => this.hide());
+      if (!isMobileDevice()) this.el.querySelector(".local-replays-backdrop")?.addEventListener("click", () => this.hide());
       this.el.querySelector(".local-replays-close")?.addEventListener("click", () => this.hide());
       this.el.querySelector(".local-replays-panel")?.addEventListener("click", (e) => e.stopPropagation());
     }

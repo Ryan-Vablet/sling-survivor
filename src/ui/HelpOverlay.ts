@@ -1,9 +1,11 @@
 /**
  * HTML-based help overlay: 80% viewport, sidebar pagination, big image slots.
  * Each section's image loads from public/assets/{id}.webp (e.g. survive.webp).
+ * On mobile, backdrop tap does not close (toggle behavior); only "Got it" closes.
  */
 
 import { assetUrl } from "../render/assets";
+import { isMobileDevice } from "../core/device";
 
 const SECTIONS: { id: string; title: string; body: string }[] = [
   {
@@ -53,7 +55,7 @@ export class HelpOverlay {
       const closeBtn = this.el.querySelector(".help-overlay-close");
       const sidebarLinks = this.el.querySelectorAll(".help-sidebar a");
 
-      back?.addEventListener("click", () => this.hide());
+      if (!isMobileDevice()) back?.addEventListener("click", () => this.hide());
       closeBtn?.addEventListener("click", () => this.hide());
       this.el.querySelector(".help-overlay-panel")?.addEventListener("click", (e) => e.stopPropagation());
 
