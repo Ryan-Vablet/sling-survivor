@@ -117,57 +117,17 @@ export class ReplayScene implements IScene {
       }
     }
 
-    this.replayData = data ?? null;
-    if (!this.replayData || !this.replayData.snapshots.length) {
+    const replayData = data ?? null;
+    if (!replayData || !replayData.snapshots.length) {
       this.scenes.data.replayUrl = undefined;
       this.scenes.data.replayData = undefined;
       this.scenes.switchTo("title");
       return;
     }
 
-    this.snapshots = this.replayData.snapshots;
-    this.duration = this.replayData.duration ?? this.snapshots[this.snapshots.length - 1]?.t ?? 0;
-    this.replayTime = 0;
-    this.eventIndex = 0;
-    this.gameOverShown = false;
-    this.upgradeShowT = -1;
-    this.upgradeShowEndRealT = -1;
-    this.upgradeQueue = this.buildUpgradeQueue();
-
-    app.stage.addChild(this.root);
-    this.root.addChild(this.layers.root);
-    this.layers.world.addChild(this.gfxWorld);
-    this.layers.world.addChild(this.coinContainer);
-    this.layers.world.addChild(this.droneContainer);
-    this.layers.world.addChild(this.gfxDebug);
-
-    this.layers.ui.addChild(this.hud.root);
-    this.layers.ui.addChild(this.upgradeOverlay.root);
-    this.speedLabel.x = 12;
-    this.speedLabel.y = app.renderer.height - 28;
-    this.layers.ui.addChild(this.speedLabel);
-    this.cam = new Camera2D(this.layers.world);
-
-    await loadAssets();
-    const rocketTex = getRocketTexture();
-    if (rocketTex) {
-      this.rocketSprite = new Sprite(rocketTex);
-      this.rocketSprite.anchor.set(0.5);
-      this.rocketSprite.scale.set(ROCKET_SPRITE_SCALE);
-      this.layers.world.addChild(this.rocketSprite);
-    }
-    await this.loadCoinFrames();
-    this.initStars();
-
-    this.resize(app.renderer.width, app.renderer.height);
-
-    this.speedKeyHandler = (e: KeyboardEvent) => {
-      if (e.key === "s" || e.key === "S") {
-        this.playbackSpeed = this.playbackSpeed === 1 ? 2 : 1;
-        this.speedLabel.text = `Speed: ${this.playbackSpeed}x (S)`;
-      }
-    };
-    window.addEventListener("keydown", this.speedKeyHandler);
+    // Replay playback runs in RunScene (same renderer as live gameplay). ReplayScene is load-only.
+    this.scenes.data.replayData = replayData;
+    this.scenes.switchTo("run");
   }
 
   resize(w: number, h: number): void {
