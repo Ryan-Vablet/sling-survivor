@@ -216,7 +216,7 @@ export async function submitToGlobal(
   const supabase = getSupabase();
   if (!supabase) return;
   try {
-    const { error } = await supabase.functions.invoke("submit-score", {
+    const { data, error } = await supabase.functions.invoke("submit-score", {
       body: {
         initials: entry.initials,
         distance: entry.distance,
@@ -229,7 +229,8 @@ export async function submitToGlobal(
       },
     });
     if (error) {
-      console.warn("[Leaderboard] submit-score failed:", error.message);
+      const msg = (data as { error?: string } | null)?.error ?? error.message;
+      console.warn("[Leaderboard] submit-score failed:", msg);
       return;
     }
     console.log("[Leaderboard] Score saved to global (Supabase)");

@@ -168,11 +168,14 @@ function validate(
     distance: Math.round(distance),
     scrap: Math.round(scrap),
     gold: Math.round(gold),
-    total_gold_earned: total_gold_earned,
     summary_json: summary_json ?? null,
     replay_url,
     game_version: game_version ?? null,
   };
+  // Only include total_gold_earned if present (backward compat: table may not have column yet)
+  if (total_gold_earned != null) {
+    row.total_gold_earned = total_gold_earned;
+  }
   return {
     ok: true,
     row,
