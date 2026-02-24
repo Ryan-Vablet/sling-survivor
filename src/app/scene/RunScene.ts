@@ -1,4 +1,5 @@
 import { AnimatedSprite, Assets, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
+import { isMobileDevice } from "../../core/device";
 import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
 import { Layers } from "../../render/layers";
@@ -124,6 +125,12 @@ export class RunScene implements IScene {
   private replayRecorder: ReplayRecorder | null = null;
   private lastUpgradeDisplayT = 0;
 
+  /** Mobile-only: visual joystick in bottom-right that reflects current thrust input (display only). */
+  private joystickContainer: Container | null = null;
+  private joystickStick: Graphics | null = null;
+  private joystickCenterX = 0;
+  private joystickCenterY = 0;
+
   constructor(scenes: SceneManager) {
     this.scenes = scenes;
   }
@@ -157,6 +164,7 @@ export class RunScene implements IScene {
     this.layers.ui.addChild(this.hud.root);
     this.layers.ui.addChild(this.upgradeOverlay.root);
     this.layers.ui.addChild(this.toast.root);
+    if (isMobileDevice() && !this.joystickContainer) this.initVirtualJoystick();
 
     this.cam = new Camera2D(this.layers.world);
 
@@ -187,6 +195,7 @@ export class RunScene implements IScene {
       this.end.layout(w, h);
       this.upgradeOverlay.layout(w, h);
       this.toast.layout(w, h);
+      this.layoutVirtualJoystick(w, h);
     };
     window.addEventListener("resize", this.resizeHandler);
     this.resizeHandler();
@@ -370,6 +379,69 @@ export class RunScene implements IScene {
       sprite.destroy();
     }
     this.droneSprites.clear();
+  }
+
+  private static readonly JOYSTICK_BASE_R = 44;
+  private static readonly JOYSTICK_STICK_R = 16;
+  private static readonly JOYSTICK_STICK_TRAVEL = 28;
+  private static readonly JOYSTICK_MARGIN = 24;
+  /** Gap between base circle edge and arrows so they sit outside the knob travel. */
+  private static readonly JOYSTICK_ARROW_GAP = 10;
+  private static readonly JOYSTICK_ARROW_SIZE = 8;
+
+  private initVirtualJoystick() {
+    const c = new Container();
+    const cx = RunScene.JOYSTICK_BASE_R;
+    const cy = RunScene.JOYSTICK_BASE_R;
+    const r = RunScene.JOYSTICK_BASE_R;
+    const gap = RunScene.JOYSTICK_ARROW_GAP;
+    const sz = RunScene.JOYSTICK_ARROW_SIZE;
+
+    const base = new Graphics();
+    base.circle(cx, cy).fill({ color: 0x000000, alpha: 0.35 });
+    base.circle(cx, cy).stroke({ width: 2, color: 0xffffff, alpha: 0.4 });
+    c.addChild(base);
+
+    const arrowFill = { color: 0xffffff, alpha: 0.5 };
+    const arrowStroke = { width: 1, color: 0xffffff, alpha: 0.35 };
+    const arrows = new Graphics();
+    // Up: tip above center
+    arrows.poly([cx, cy - r - gap - sz, cx - sz, cy - r - gap + sz, cx + sz, cy - r - gap + sz], true).fill(arrowFill).stroke(arrowStroke);
+    // Right
+    arrows.poly([cx + r + gap + sz, cy, cx + r + gap - sz, cy - sz, cx + r + gap - sz, cy + sz], true).fill(arrowFill).stroke(arrowStroke);
+    // Down: tip below center
+    arrows.poly([cx, cy + r + gap + sz, cx - sz, cy + r + gap - sz, cx + sz, cy + r + gap - sz], true).fill(arrowFill).stroke(arrowStroke);
+    // Left
+    arrows.poly([cx - r - gap - sz, cy, cx - r - gap + sz, cy - sz, cx - r - gap + sz, cy + sz], true).fill(arrowFill).stroke(arrowStroke);
+    c.addChild(arrows);
+
+    const stick = new Graphics();
+    stick.circle(0, 0, RunScene.JOYSTICK_STICK_R).fill({ color: 0xffffff, alpha: 0.6 });
+    stick.circle(0, 0, RunScene.JOYSTICK_STICK_R).stroke({ width: 1, color: 0xffffff, alpha: 0.5 });
+    stick.x = RunScene.JOYSTICK_BASE_R;
+    stick.y = RunScene.JOYSTICK_BASE_R;
+    c.addChild(stick);
+    this.joystickContainer = c;
+    this.joystickStick = stick;
+    this.joystickCenterX = RunScene.JOYSTICK_BASE_R;
+    this.joystickCenterY = RunScene.JOYSTICK_BASE_R;
+    this.layers.ui.addChild(c);
+  }
+
+  private layoutVirtualJoystick(w: number, h: number) {
+    if (!this.joystickContainer) return;
+    const r = RunScene.JOYSTICK_BASE_R;
+    const m = RunScene.JOYSTICK_MARGIN;
+    this.joystickContainer.x = w - m - r * 2;
+    this.joystickContainer.y = h - m - r * 2;
+  }
+
+  private updateVirtualJoystick() {
+    if (!this.joystickStick) return;
+    const axis = this.thrustInput.getAxis();
+    const travel = RunScene.JOYSTICK_STICK_TRAVEL;
+    this.joystickStick.x = this.joystickCenterX + axis.x * travel;
+    this.joystickStick.y = this.joystickCenterY + axis.y * travel;
   }
 
   private resetRun() {
@@ -670,6 +742,7 @@ export class RunScene implements IScene {
 
     this.toast.update(dt);
     this.fxManager.update(dt, this.runState.paused);
+    this.updateVirtualJoystick();
     this.coinAnimT += dt;
     for (const c of this.worldCoins) {
       if (!c.alive) continue;
