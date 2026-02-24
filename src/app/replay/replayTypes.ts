@@ -38,6 +38,10 @@ export type ReplaySnapshotRunState = {
   round: number;
   level: number;
   distanceM: number;
+  /** Scrap required to complete current round (for HUD parity). */
+  roundToll: number;
+  /** Rockets left this round (for HUD parity). */
+  rocketsRemaining: number;
 };
 
 export type ReplaySnapshot = {

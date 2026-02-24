@@ -9,7 +9,7 @@ import { Keyboard } from "../../core/input/Keyboard";
 import { PointerDrag } from "../../core/input/PointerDrag";
 import { CombinedThrustInput } from "../../core/input/ThrustInput";
 import { TUNING } from "../../content/tuning";
-import type { Drone, Player, Projectile, EnemyBullet, WorldCoin } from "../../sim/entities";
+import type { Drone, DroneType, Player, Projectile, EnemyBullet, WorldCoin } from "../../sim/entities";
 import { PhysicsWorld } from "../../sim/world/PhysicsWorld";
 import { BoostThrustSystem } from "../../sim/systems/BoostThrustSystem";
 import { LauncherSystem } from "../../sim/systems/LauncherSystem";
@@ -38,6 +38,14 @@ import { computeRunScore, type RunSummaryData } from "../types/runSummary";
 import { ReplayRecorder } from "../replay/ReplayRecorder";
 import { uploadReplay } from "../replay/uploadReplay";
 import { saveLocalReplay } from "../replay/localReplays";
+import type {
+  ReplayData,
+  ReplaySnapshot,
+  ReplaySnapshotRunState,
+  ReplaySnapshotPlayer,
+  ReplaySnapshotDrone,
+  ReplaySnapshotCoin,
+} from "../replay/replayTypes";
 import { VERSION } from "../../version";
 
 const COIN_FRAMES = 8;
@@ -124,6 +132,15 @@ export class RunScene implements IScene {
   private replayRecorder: ReplayRecorder | null = null;
   private lastUpgradeDisplayT = 0;
 
+  /** Replay mode: drive RunScene from recorded replay (same renderer, no live physics). */
+  private replayData: ReplayData | null = null;
+  private replayTime = 0;
+  private replaySpeed = 1;
+  private replayPrevDroneIds = new Set<number>();
+  private replayEventIndex = 0;
+  private replayEscHandler: ((e: KeyboardEvent) => void) | null = null;
+  private replayUiRoot: HTMLElement | null = null;
+
   /** Mobile-only: visual joystick in bottom-right that reflects current thrust input (display only). */
   private joystickContainer: Container | null = null;
   private joystickStick: Graphics | null = null;
@@ -136,23 +153,45 @@ export class RunScene implements IScene {
 
   async enter(): Promise<void> {
     const app = this.scenes.getApp();
-    // Initialize runState and player before any await so fixedUpdate never sees undefined.
-    const returningState = this.scenes.data.runState as RunState | undefined;
-    if (returningState) {
-      this.scenes.data.runState = undefined;
-      this.runState = returningState;
-      this.replayRecorder = (this.scenes.data.replayRecorder as ReplayRecorder) ?? null;
-      this.replayT = (this.scenes.data.replayT as number) ?? 0;
-      const savedMaxDistanceM = this.scenes.data.maxDistanceM as number | undefined;
-      if (typeof savedMaxDistanceM === "number" && savedMaxDistanceM >= 0) {
-        this.maxDistanceM = savedMaxDistanceM;
-      }
-      this.scenes.data.replayRecorder = undefined;
-      this.scenes.data.replayT = undefined;
-      this.scenes.data.maxDistanceM = undefined;
-      this.resetRocket();
+    const replayDataFromScene = this.scenes.data.replayData as ReplayData | undefined;
+    if (replayDataFromScene?.snapshots?.length) {
+      this.scenes.data.replayData = undefined;
+      this.replayData = replayDataFromScene;
+      this.replayTime = 0;
+      this.replaySpeed = 1;
+      this.replayEventIndex = 0;
+      this.replayPrevDroneIds = new Set();
+      this.runState = new RunState(replayDataFromScene.seed);
+      this.ended = false;
+      this.drones = [];
+      this.projectiles = [];
+      this.enemyBullets = [];
+      this.worldCoins = [];
+      this.clearWorldCoins();
+      this.clearDroneSprites();
+      this.fxManager.clear();
+      this.deathEventsThisFrame = [];
+      this.applyReplaySnapshotToState(replayDataFromScene.snapshots[0]);
+      this.replayRecorder = null;
     } else {
-      this.resetRun();
+      this.replayData = null;
+      const returningState = this.scenes.data.runState as RunState | undefined;
+      if (returningState) {
+        this.scenes.data.runState = undefined;
+        this.runState = returningState;
+        this.replayRecorder = (this.scenes.data.replayRecorder as ReplayRecorder) ?? null;
+        this.replayT = (this.scenes.data.replayT as number) ?? 0;
+        const savedMaxDistanceM = this.scenes.data.maxDistanceM as number | undefined;
+        if (typeof savedMaxDistanceM === "number" && savedMaxDistanceM >= 0) {
+          this.maxDistanceM = savedMaxDistanceM;
+        }
+        this.scenes.data.replayRecorder = undefined;
+        this.scenes.data.replayT = undefined;
+        this.scenes.data.maxDistanceM = undefined;
+        this.resetRocket();
+      } else {
+        this.resetRun();
+      }
     }
 
     this.scenes.getDebug().gfx.clear();
@@ -193,6 +232,11 @@ export class RunScene implements IScene {
     this.initStars();
 
     this.resize(app.renderer.width, app.renderer.height);
+
+    if (this.replayData) {
+      this.addReplayUi(app);
+      this.setupReplayEsc();
+    }
 
     const onDbgKey = (e: KeyboardEvent) => {
       if (this.ended || this.runState.paused) return;
@@ -238,6 +282,14 @@ export class RunScene implements IScene {
       this.debugKeyHandler();
       this.debugKeyHandler = null;
     }
+    if (this.replayEscHandler) {
+      window.removeEventListener("keydown", this.replayEscHandler);
+      this.replayEscHandler = null;
+    }
+    if (this.replayUiRoot?.parentElement) {
+      this.replayUiRoot.remove();
+    }
+    this.replayUiRoot = null;
   }
 
   private initStars() {
@@ -379,6 +431,556 @@ export class RunScene implements IScene {
       sprite.destroy();
     }
     this.droneSprites.clear();
+  }
+
+  /** Apply a single replay snapshot to RunScene state (used for initial frame and for interpolation result). */
+  private applyReplaySnapshotToState(snapshot: ReplaySnapshot): void {
+    const sp = snapshot.player;
+    const rs = snapshot.runState;
+    const roundToll =
+      (rs as ReplaySnapshotRunState & { roundToll?: number }).roundToll ??
+      TUNING.rounds.baseToll;
+    const rocketsRemaining =
+      (rs as ReplaySnapshotRunState & { rocketsRemaining?: number })
+        .rocketsRemaining ?? TUNING.rounds.startingRockets;
+    this.player = {
+      pos: { x: sp.pos.x, y: sp.pos.y },
+      vel: { x: sp.vel.x, y: sp.vel.y },
+      radius: TUNING.player.radius,
+      hp: sp.hp,
+      boost: sp.boost,
+      dragDebuffT: 0,
+      launched: sp.launched,
+      stallT: 0,
+      kills: sp.kills,
+      hits: 0,
+    };
+    this.runState.scrap = rs.scrap;
+    this.runState.gold = rs.gold;
+    this.runState.currentRound = rs.round;
+    this.runState.roundToll = roundToll;
+    this.runState.rocketsRemaining = rocketsRemaining;
+    this.runState.currentLevel = rs.level;
+    this.lastDistanceM = rs.distanceM ?? 0;
+    this.drones = snapshot.drones.map((d) => this.replayDroneFromSnapshot(d));
+    this.worldCoins = snapshot.coins.map((c) => ({
+      id: c.id,
+      pos: { x: c.pos.x, y: c.pos.y },
+      alive: c.alive,
+      bobPhase: (c.id * 0.5) % (Math.PI * 2),
+    }));
+  }
+
+  private replayDroneFromSnapshot(d: ReplaySnapshotDrone): Drone {
+    const radius = d.elite ? TUNING.elite.radius : 16;
+    return {
+      id: d.id,
+      pos: { x: d.pos.x, y: d.pos.y },
+      vel: { x: d.vel.x, y: d.vel.y },
+      radius,
+      hp: d.hp,
+      speed: 0,
+      alive: true,
+      elite: d.elite,
+      droneType: (d.type === "shooter" ? "shooter" : "chaser") as DroneType,
+      shootTimer: 0,
+      wobblePhase: (d.id * 0.7) % (Math.PI * 2),
+    };
+  }
+
+  /** Interpolate replay state at time t; returns RunScene entity types. */
+  private getInterpolatedReplayState(t: number): {
+    player: Player;
+    runStateSlice: {
+      scrap: number;
+      gold: number;
+      round: number;
+      roundToll: number;
+      rocketsRemaining: number;
+      level: number;
+      distanceM: number;
+    };
+    drones: Drone[];
+    coins: WorldCoin[];
+  } {
+    const snapshots = this.replayData!.snapshots;
+    if (snapshots.length === 0) {
+      const p = this.player;
+      return {
+        player: { ...p },
+        runStateSlice: {
+          scrap: this.runState.scrap,
+          gold: this.runState.gold,
+          round: this.runState.currentRound,
+          roundToll: this.runState.roundToll,
+          rocketsRemaining: this.runState.rocketsRemaining,
+          level: this.runState.currentLevel,
+          distanceM: this.lastDistanceM,
+        },
+        drones: this.drones.map((d) => ({ ...d })),
+        coins: this.worldCoins.map((c) => ({ ...c })),
+      };
+    }
+    if (t <= snapshots[0].t) {
+      const s = snapshots[0];
+      const rs = s.runState;
+      const roundToll =
+        (rs as ReplaySnapshotRunState & { roundToll?: number }).roundToll ??
+        TUNING.rounds.baseToll;
+      const rocketsRemaining =
+        (rs as ReplaySnapshotRunState & { rocketsRemaining?: number })
+          .rocketsRemaining ?? TUNING.rounds.startingRockets;
+      return {
+        player: {
+          pos: { x: s.player.pos.x, y: s.player.pos.y },
+          vel: { x: s.player.vel.x, y: s.player.vel.y },
+          radius: TUNING.player.radius,
+          hp: s.player.hp,
+          boost: s.player.boost,
+          dragDebuffT: 0,
+          launched: s.player.launched,
+          stallT: 0,
+          kills: s.player.kills,
+          hits: 0,
+        },
+        runStateSlice: {
+          scrap: rs.scrap,
+          gold: rs.gold,
+          round: rs.round,
+          roundToll,
+          rocketsRemaining,
+          level: rs.level,
+          distanceM: rs.distanceM ?? 0,
+        },
+        drones: s.drones.map((d) => this.replayDroneFromSnapshot(d)),
+        coins: s.coins.map((c) => ({
+          id: c.id,
+          pos: { x: c.pos.x, y: c.pos.y },
+          alive: c.alive,
+          bobPhase: (c.id * 0.5) % (Math.PI * 2),
+        })),
+      };
+    }
+    if (t >= snapshots[snapshots.length - 1].t) {
+      const s = snapshots[snapshots.length - 1];
+      const rs = s.runState;
+      const roundToll =
+        (rs as ReplaySnapshotRunState & { roundToll?: number }).roundToll ??
+        TUNING.rounds.baseToll;
+      const rocketsRemaining =
+        (rs as ReplaySnapshotRunState & { rocketsRemaining?: number })
+          .rocketsRemaining ?? TUNING.rounds.startingRockets;
+      return {
+        player: {
+          pos: { x: s.player.pos.x, y: s.player.pos.y },
+          vel: { x: s.player.vel.x, y: s.player.vel.y },
+          radius: TUNING.player.radius,
+          hp: s.player.hp,
+          boost: s.player.boost,
+          dragDebuffT: 0,
+          launched: s.player.launched,
+          stallT: 0,
+          kills: s.player.kills,
+          hits: 0,
+        },
+        runStateSlice: {
+          scrap: rs.scrap,
+          gold: rs.gold,
+          round: rs.round,
+          roundToll,
+          rocketsRemaining,
+          level: rs.level,
+          distanceM: rs.distanceM ?? 0,
+        },
+        drones: s.drones.map((d) => this.replayDroneFromSnapshot(d)),
+        coins: s.coins.map((c) => ({
+          id: c.id,
+          pos: { x: c.pos.x, y: c.pos.y },
+          alive: c.alive,
+          bobPhase: (c.id * 0.5) % (Math.PI * 2),
+        })),
+      };
+    }
+    let i = 0;
+    while (i + 1 < snapshots.length && snapshots[i + 1].t <= t) i++;
+    const a = snapshots[i];
+    const b = snapshots[i + 1];
+    const span = b.t - a.t;
+    const f = span > 0 ? (t - a.t) / span : 1;
+    const lerp = (x: number, y: number) => x + (y - x) * f;
+    const rsA = a.runState;
+    const rsB = b.runState;
+    const roundToll =
+      (rsB as ReplaySnapshotRunState & { roundToll?: number }).roundToll ??
+      TUNING.rounds.baseToll;
+    const rocketsRemaining =
+      (rsB as ReplaySnapshotRunState & { rocketsRemaining?: number })
+        .rocketsRemaining ?? TUNING.rounds.startingRockets;
+    const droneMap = new Map<number, Drone>();
+    for (const d of b.drones) {
+      const prev = a.drones.find((x) => x.id === d.id);
+      if (prev) {
+        droneMap.set(d.id, {
+          ...this.replayDroneFromSnapshot(d),
+          pos: {
+            x: lerp(prev.pos.x, d.pos.x),
+            y: lerp(prev.pos.y, d.pos.y),
+          },
+          vel: {
+            x: lerp(prev.vel.x, d.vel.x),
+            y: lerp(prev.vel.y, d.vel.y),
+          },
+        });
+      } else {
+        droneMap.set(d.id, this.replayDroneFromSnapshot(d));
+      }
+    }
+    const coinMap = new Map<number, WorldCoin>();
+    for (const c of b.coins) {
+      const prev = a.coins.find((x) => x.id === c.id);
+      if (prev) {
+        coinMap.set(c.id, {
+          id: c.id,
+          pos: {
+            x: lerp(prev.pos.x, c.pos.x),
+            y: lerp(prev.pos.y, c.pos.y),
+          },
+          alive: c.alive,
+          bobPhase: (c.id * 0.5) % (Math.PI * 2),
+        });
+      } else {
+        coinMap.set(c.id, {
+          id: c.id,
+          pos: { x: c.pos.x, y: c.pos.y },
+          alive: c.alive,
+          bobPhase: (c.id * 0.5) % (Math.PI * 2),
+        });
+      }
+    }
+    return {
+      player: {
+        pos: {
+          x: lerp(a.player.pos.x, b.player.pos.x),
+          y: lerp(a.player.pos.y, b.player.pos.y),
+        },
+        vel: {
+          x: lerp(a.player.vel.x, b.player.vel.x),
+          y: lerp(a.player.vel.y, b.player.vel.y),
+        },
+        radius: TUNING.player.radius,
+        hp: lerp(a.player.hp, b.player.hp),
+        boost: lerp(a.player.boost, b.player.boost),
+        dragDebuffT: 0,
+        launched: b.player.launched,
+        stallT: 0,
+        kills: b.player.kills,
+        hits: 0,
+      },
+      runStateSlice: {
+        scrap: lerp(rsA.scrap, rsB.scrap),
+        gold: lerp(rsA.gold, rsB.gold),
+        round: rsB.round,
+        roundToll,
+        rocketsRemaining,
+        level: rsB.level,
+        distanceM: lerp(rsA.distanceM ?? 0, rsB.distanceM ?? 0),
+      },
+      drones: [...droneMap.values()],
+      coins: [...coinMap.values()],
+    };
+  }
+
+  private applyReplayState(state: {
+    player: Player;
+    runStateSlice: {
+      scrap: number;
+      gold: number;
+      round: number;
+      roundToll: number;
+      rocketsRemaining: number;
+      level: number;
+      distanceM: number;
+    };
+    drones: Drone[];
+    coins: WorldCoin[];
+  }): void {
+    this.player = state.player;
+    this.runState.scrap = state.runStateSlice.scrap;
+    this.runState.gold = state.runStateSlice.gold;
+    this.runState.currentRound = state.runStateSlice.round;
+    this.runState.roundToll = state.runStateSlice.roundToll;
+    this.runState.rocketsRemaining = state.runStateSlice.rocketsRemaining;
+    this.runState.currentLevel = state.runStateSlice.level;
+    this.lastDistanceM = state.runStateSlice.distanceM;
+    this.drones = state.drones;
+    this.worldCoins = state.coins;
+    this.ensureReplayCoinSprites();
+  }
+
+  private updateReplay(dt: number, app: { renderer: { width: number; height: number }; canvas: HTMLCanvasElement }): void {
+    const viewW = app.renderer.width;
+    const viewH = app.renderer.height;
+
+    if (this.ended) {
+      this.cam.follow(
+        this.player.pos.x - viewW * 0.33,
+        this.player.pos.y - viewH * 0.55
+      );
+      this.cam.update(dt);
+      this.toast.update(dt);
+      this.fxManager.update(dt, false);
+      this.coinAnimT += dt;
+      for (const c of this.worldCoins) {
+        if (!c.alive) continue;
+        const sprite = this.coinSprites.get(c.id);
+        if (sprite) {
+          sprite.x = c.pos.x;
+          sprite.y = c.pos.y + Math.sin(this.coinAnimT * 2 + c.bobPhase) * 6;
+        }
+      }
+      this.drawWorld(viewW, viewH);
+      const ps = this.runState.playerStats;
+      const currentTier = this.tierSys.currentTier;
+      this.hud.update({
+        distanceM: this.lastDistanceM,
+        speed: Math.hypot(this.player.vel.x, this.player.vel.y),
+        kills: this.player.kills,
+        hits: this.player.hits,
+        hp: this.player.hp,
+        hpMax: ps.hpMax,
+        boost: this.player.boost,
+        boostMax: ps.boostMax,
+        round: this.runState.currentRound,
+        rocketsLeft: this.runState.rocketsRemaining,
+        scrap: this.runState.scrap,
+        roundToll: this.runState.roundToll,
+        gold: this.runState.gold,
+        xp: this.runState.currentXp,
+        xpMax: this.runState.xpToNextLevel,
+        level: this.runState.currentLevel,
+        artifacts: this.runState.appliedArtifacts.size,
+        tierLabel: currentTier.shortLabel,
+        tierName: currentTier.name,
+        tierAccent: currentTier.visuals.accentColor,
+        tierScrapMult: currentTier.reward.scrapMult,
+        tierCoinMult: currentTier.reward.coinGoldMult,
+        tierHpMult: currentTier.difficulty.enemyHpMult,
+        tierSpeedMult: currentTier.difficulty.enemySpeedMult,
+      });
+      return;
+    }
+
+    const events = this.replayData!.events ?? [];
+    while (this.replayEventIndex < events.length) {
+      const ev = events[this.replayEventIndex];
+      if (ev.t > this.replayTime) break;
+      if (ev.type === "game_over") {
+        this.ended = true;
+        this.showReplayEndOverlay();
+        return;
+      }
+      this.replayEventIndex++;
+    }
+
+    const duration =
+      this.replayData!.duration ??
+      (this.replayData!.snapshots[this.replayData!.snapshots.length - 1]?.t ?? 0);
+    if (this.replayTime >= duration) {
+      this.ended = true;
+      this.showReplayEndOverlay();
+      return;
+    }
+
+    this.replayTime += dt * this.replaySpeed;
+    const state = this.getInterpolatedReplayState(this.replayTime);
+
+    this.deathEventsThisFrame = [];
+    const newDroneIds = new Set(state.drones.map((d) => d.id));
+    for (const d of this.drones) {
+      if (!newDroneIds.has(d.id)) {
+        this.deathEventsThisFrame.push({
+          id: d.id,
+          pos: { x: d.pos.x, y: d.pos.y },
+          vel: { x: d.vel.x, y: d.vel.y },
+          elite: d.elite,
+          droneType: d.droneType,
+        });
+      }
+    }
+
+    this.applyReplayState(state);
+    this.tierSys.update(state.runStateSlice.distanceM);
+
+    this.cam.follow(
+      this.player.pos.x - viewW * 0.33,
+      this.player.pos.y - viewH * 0.55
+    );
+    this.cam.update(dt);
+    this.toast.update(dt);
+    this.fxManager.update(dt, false);
+    this.updateVirtualJoystick();
+    this.coinAnimT += dt;
+    for (const c of this.worldCoins) {
+      if (!c.alive) continue;
+      const sprite = this.coinSprites.get(c.id);
+      if (sprite) {
+        sprite.x = c.pos.x;
+        sprite.y = c.pos.y + Math.sin(this.coinAnimT * 2 + c.bobPhase) * 6;
+      }
+    }
+    this.drawWorld(viewW, viewH);
+
+    const ps = this.runState.playerStats;
+    const currentTier = this.tierSys.currentTier;
+    this.hud.update({
+      distanceM: this.lastDistanceM,
+      speed: Math.hypot(this.player.vel.x, this.player.vel.y),
+      kills: this.player.kills,
+      hits: this.player.hits,
+      hp: this.player.hp,
+      hpMax: ps.hpMax,
+      boost: this.player.boost,
+      boostMax: ps.boostMax,
+      round: this.runState.currentRound,
+      rocketsLeft: this.runState.rocketsRemaining,
+      scrap: this.runState.scrap,
+      roundToll: this.runState.roundToll,
+      gold: this.runState.gold,
+      xp: this.runState.currentXp,
+      xpMax: this.runState.xpToNextLevel,
+      level: this.runState.currentLevel,
+      artifacts: this.runState.appliedArtifacts.size,
+      tierLabel: currentTier.shortLabel,
+      tierName: currentTier.name,
+      tierAccent: currentTier.visuals.accentColor,
+      tierScrapMult: currentTier.reward.scrapMult,
+      tierCoinMult: currentTier.reward.coinGoldMult,
+      tierHpMult: currentTier.difficulty.enemyHpMult,
+      tierSpeedMult: currentTier.difficulty.enemySpeedMult,
+    });
+  }
+
+  private showReplayEndOverlay(): void {
+    const app = this.scenes.getApp();
+    if (!this.layers.ui.children.includes(this.end.root)) {
+      this.layers.ui.addChild(this.end.root);
+    }
+    this.end.setText("Replay complete\n\nClick to exit");
+    this.end.layout(app.renderer.width, app.renderer.height);
+    if (this.endClickHandler) {
+      app.canvas.removeEventListener("pointerdown", this.endClickHandler);
+    }
+    this.endClickHandler = () => {
+      app.canvas.removeEventListener("pointerdown", this.endClickHandler!);
+      this.endClickHandler = null;
+      this.layers.ui.removeChild(this.end.root);
+      this.replayData = null;
+      this.scenes.data.replayData = undefined;
+      this.scenes.data.replayUrl = undefined;
+      this.scenes.switchTo("title");
+    };
+    app.canvas.addEventListener("pointerdown", this.endClickHandler);
+  }
+
+  private addReplayUi(app: { renderer: { width: number; height: number }; canvas: HTMLCanvasElement }): void {
+    const parent = app.canvas.parentElement ?? document.body;
+    const root = document.createElement("div");
+    root.style.cssText =
+      "position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:space-between;";
+    const label = document.createElement("div");
+    label.textContent = "REPLAY";
+    label.style.cssText =
+      "font-family:system-ui;font-size:12px;color:rgba(255,255,255,0.4);margin-top:8px;pointer-events:none;";
+    root.appendChild(label);
+
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display:flex;align-items:center;gap:8px;margin-bottom:12px;margin-right:12px;align-self:flex-end;pointer-events:auto;";
+    const speeds = [1, 2, 3] as const;
+    speeds.forEach((speed) => {
+      const btn = document.createElement("button");
+      btn.textContent = `${speed}x`;
+      btn.type = "button";
+      btn.style.cssText =
+        "padding:6px 10px;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.5);color:#ccc;border:1px solid rgba(255,255,255,0.3);border-radius:4px;cursor:pointer;";
+      if (this.replaySpeed === speed) {
+        btn.style.background = "rgba(100,140,200,0.6)";
+        btn.style.color = "#fff";
+      }
+      btn.addEventListener("click", () => {
+        this.replaySpeed = speed;
+        speeds.forEach((s, i) => {
+          const b = row.children[i] as HTMLButtonElement;
+          if (s === speed) {
+            b.style.background = "rgba(100,140,200,0.6)";
+            b.style.color = "#fff";
+          } else {
+            b.style.background = "rgba(0,0,0,0.5)";
+            b.style.color = "#ccc";
+          }
+        });
+      });
+      row.appendChild(btn);
+    });
+    const exitBtn = document.createElement("button");
+    exitBtn.textContent = "EXIT";
+    exitBtn.type = "button";
+    exitBtn.style.cssText =
+      "padding:6px 14px;font-family:system-ui;font-size:12px;background:rgba(80,40,40,0.7);color:#f88;border:1px solid rgba(255,100,100,0.4);border-radius:4px;cursor:pointer;";
+    exitBtn.addEventListener("click", () => {
+      this.replayData = null;
+      this.scenes.data.replayData = undefined;
+      this.scenes.data.replayUrl = undefined;
+      if (this.replayUiRoot?.parentElement) this.replayUiRoot.remove();
+      this.replayUiRoot = null;
+      this.scenes.switchTo("title");
+    });
+    row.appendChild(exitBtn);
+    root.appendChild(row);
+    parent.style.position = parent.style.position || "relative";
+    parent.appendChild(root);
+    this.replayUiRoot = root;
+  }
+
+  private setupReplayEsc(): void {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (!this.replayData) return;
+      e.preventDefault();
+      this.replayData = null;
+      this.scenes.data.replayData = undefined;
+      this.scenes.data.replayUrl = undefined;
+      if (this.replayUiRoot?.parentElement) this.replayUiRoot.remove();
+      this.replayUiRoot = null;
+      this.scenes.switchTo("title");
+    };
+    this.replayEscHandler = handler;
+    window.addEventListener("keydown", handler);
+  }
+
+  private ensureReplayCoinSprites(): void {
+    const wc = TUNING.worldCoins;
+    for (const c of this.worldCoins) {
+      if (!c.alive) continue;
+      if (this.coinSprites.has(c.id)) continue;
+      if (this.coinFrames.length === 0) continue;
+      const sprite = new AnimatedSprite(this.coinFrames);
+      sprite.width = wc.coinSize;
+      sprite.height = wc.coinSize;
+      sprite.anchor.set(0.5);
+      sprite.animationSpeed = 0.15;
+      sprite.gotoAndPlay(c.id % COIN_FRAMES);
+      this.coinContainer.addChild(sprite);
+      this.coinSprites.set(c.id, sprite);
+    }
+    for (const [id, sprite] of Array.from(this.coinSprites.entries())) {
+      const coin = this.worldCoins.find((c) => c.id === id);
+      if (!coin || !coin.alive) {
+        this.coinContainer.removeChild(sprite);
+        sprite.destroy();
+        this.coinSprites.delete(id);
+      }
+    }
   }
 
   private static readonly JOYSTICK_BASE_R = 44;
@@ -535,6 +1137,7 @@ export class RunScene implements IScene {
 
   fixedUpdate(dt: number): void {
     if (this.ended) return;
+    if (this.replayData) return; // Replay is driven by update() only
     // INVARIANT: all timers (stall, dragDebuff, weapon cooldowns, spawner,
     // shooter cooldowns, enemy bullet lifetimes) advance below this gate.
     if (this.runState.paused) return;
@@ -727,6 +1330,11 @@ export class RunScene implements IScene {
 
   update(dt: number): void {
     const app = this.scenes.getApp();
+
+    if (this.replayData) {
+      this.updateReplay(dt, app);
+      return;
+    }
 
     const camX = this.player.pos.x - app.renderer.width * 0.33;
     const camY = this.player.pos.y - app.renderer.height * 0.55;

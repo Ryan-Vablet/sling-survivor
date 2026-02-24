@@ -68,6 +68,8 @@ export class ReplayRecorder {
         round: runState.currentRound,
         level: runState.currentLevel,
         distanceM,
+        roundToll: runState.roundToll,
+        rocketsRemaining: runState.rocketsRemaining,
       },
     });
   }
