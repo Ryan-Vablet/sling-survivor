@@ -17,6 +17,7 @@ export const TIER_DEFS: readonly TierDef[] = [
       groundStroke: 0x2d4a5e,
       accentColor: 0x6688aa,
     },
+    environment: { asteroidDensity: 0, coinHeightLift: 0 },
     shortLabel: "T0",
   },
   {
@@ -35,6 +36,7 @@ export const TIER_DEFS: readonly TierDef[] = [
       groundStroke: 0x33554a,
       accentColor: 0x55cc88,
     },
+    environment: { asteroidDensity: 0.25, coinHeightLift: 0 },
     shortLabel: "T1",
   },
   {
@@ -53,6 +55,7 @@ export const TIER_DEFS: readonly TierDef[] = [
       groundStroke: 0x553355,
       accentColor: 0xcc66aa,
     },
+    environment: { asteroidDensity: 0.35, coinHeightLift: 18 },
     shortLabel: "T2",
   },
   {
@@ -71,6 +74,7 @@ export const TIER_DEFS: readonly TierDef[] = [
       groundStroke: 0x553333,
       accentColor: 0xff6644,
     },
+    environment: { asteroidDensity: 0.45, coinHeightLift: 18 },
     shortLabel: "T3",
   },
 ];

@@ -4,19 +4,20 @@ import type { IScene } from "./IScene";
 import type { SceneManager } from "./SceneManager";
 import { Layers } from "../../render/layers";
 import { Camera2D } from "../../render/Camera2D";
-import { assetUrl, getRocketTexture, getUfoTexture, loadAssets } from "../../render/assets";
+import { assetUrl, getRocketTexture, getUfoTexture, getAsteroidTexture, loadAssets } from "../../render/assets";
 import { Keyboard } from "../../core/input/Keyboard";
 import { PointerDrag } from "../../core/input/PointerDrag";
 import { CombinedThrustInput } from "../../core/input/ThrustInput";
 import { TUNING } from "../../content/tuning";
-import type { Drone, DroneType, Player, Projectile, EnemyBullet, WorldCoin } from "../../sim/entities";
+import type { Asteroid, Drone, DroneType, Player, Projectile, EnemyBullet, WorldCoin } from "../../sim/entities";
 import { PhysicsWorld } from "../../sim/world/PhysicsWorld";
 import { BoostThrustSystem } from "../../sim/systems/BoostThrustSystem";
 import { LauncherSystem } from "../../sim/systems/LauncherSystem";
 import { EnemySpawner } from "../../sim/systems/EnemySpawner";
+import { AsteroidSpawner } from "../../sim/systems/AsteroidSpawner";
 import { DroneAI } from "../../sim/systems/DroneAI";
 import { WeaponSystem } from "../../sim/systems/WeaponSystem";
-import { CollisionSystem, type DroneDeathEvent } from "../../sim/systems/CollisionSystem";
+import { CollisionSystem, type DroneDeathEvent, type AsteroidDeathEvent } from "../../sim/systems/CollisionSystem";
 import { FxManager } from "../../fx/FxManager";
 import { StallSystem } from "../../sim/systems/StallSystem";
 import { UpgradeSystem } from "../../sim/systems/UpgradeSystem";
@@ -92,6 +93,7 @@ export class RunScene implements IScene {
   private thrust = new BoostThrustSystem();
   private launcher = new LauncherSystem();
   private spawner = new EnemySpawner();
+  private asteroidSpawner = new AsteroidSpawner();
   private droneAI = new DroneAI();
   private weapon = new WeaponSystem();
   private collide = new CollisionSystem();
@@ -106,6 +108,7 @@ export class RunScene implements IScene {
 
   private player!: Player;
   private drones: Drone[] = [];
+  private asteroids: Asteroid[] = [];
   private projectiles: Projectile[] = [];
   private enemyBullets: EnemyBullet[] = [];
 
@@ -115,7 +118,10 @@ export class RunScene implements IScene {
   private rocketSprite: Sprite | null = null;
   private droneContainer = new Container();
   private droneSprites = new Map<number, Sprite>();
+  private asteroidContainer = new Container();
+  private asteroidSprites = new Map<number, Sprite>();
   private deathEventsThisFrame: DroneDeathEvent[] = [];
+  private asteroidDeathsThisFrame: AsteroidDeathEvent[] = [];
   private fxManager = new FxManager();
   private hud = new Hud();
   private end = new EndScreen();
@@ -179,13 +185,16 @@ export class RunScene implements IScene {
       this.runState = new RunState(replayDataFromScene.seed);
       this.ended = false;
       this.drones = [];
+      this.asteroids = [];
       this.projectiles = [];
       this.enemyBullets = [];
       this.worldCoins = [];
       this.clearWorldCoins();
       this.clearDroneSprites();
+      this.clearAsteroidSprites();
       this.fxManager.clear();
       this.deathEventsThisFrame = [];
+      this.asteroidDeathsThisFrame = [];
       this.applyReplaySnapshotToState(replayDataFromScene.snapshots[0]);
       this.weapon.reset();
       this.replayUpgradeQueue = this.buildReplayUpgradeQueue(replayDataFromScene);
@@ -220,6 +229,7 @@ export class RunScene implements IScene {
     this.layers.world.addChild(this.gfxWorld);
     this.layers.world.addChild(this.coinContainer);
     this.layers.world.addChild(this.droneContainer);
+    this.layers.world.addChild(this.asteroidContainer);
     this.layers.world.addChild(this.fxManager.getContainer());
     this.layers.world.addChild(this.gfxDebug);
     this.layers.ui.addChild(this.hud.root);
@@ -357,11 +367,12 @@ export class RunScene implements IScene {
     const viewAhead = this.player.pos.x + 1200;
     const wc = TUNING.worldCoins;
     const rng = this.runState.rng;
+    const coinHeightLift = this.tierSys.currentTier.environment.coinHeightLift;
 
     while (this.nextCoinClusterX < viewAhead) {
       const baseX = this.nextCoinClusterX;
       const groundY = this.world.terrain.groundYAt(baseX);
-      const baseY = groundY - 120 - rng.nextFloat() * 130;
+      const baseY = groundY - 120 - coinHeightLift - rng.nextFloat() * 130;
       const count = wc.clusterMin + rng.nextInt(wc.clusterMax - wc.clusterMin + 1);
 
       for (let i = 0; i < count; i++) {
@@ -451,6 +462,14 @@ export class RunScene implements IScene {
     this.droneSprites.clear();
   }
 
+  private clearAsteroidSprites() {
+    for (const sprite of this.asteroidSprites.values()) {
+      this.asteroidContainer.removeChild(sprite);
+      sprite.destroy();
+    }
+    this.asteroidSprites.clear();
+  }
+
   /** Remove drones far behind the player so they stop counting toward maxAlive. No points or FX. */
   private cullOffScreenDrones(): void {
     const threshold = this.player.pos.x - TUNING.enemy.cullBehindPx;
@@ -463,6 +482,22 @@ export class RunScene implements IScene {
         this.droneContainer.removeChild(sprite);
         sprite.destroy();
         this.droneSprites.delete(id);
+      }
+    }
+  }
+
+  /** Remove asteroids far behind the player. No points or FX. */
+  private cullOffScreenAsteroids(): void {
+    const threshold = this.player.pos.x - TUNING.asteroid.cullBehindPx;
+    for (let i = this.asteroids.length - 1; i >= 0; i--) {
+      if (this.asteroids[i].pos.x >= threshold) continue;
+      const id = this.asteroids[i].id;
+      this.asteroids.splice(i, 1);
+      const sprite = this.asteroidSprites.get(id);
+      if (sprite) {
+        this.asteroidContainer.removeChild(sprite);
+        sprite.destroy();
+        this.asteroidSprites.delete(id);
       }
     }
   }
@@ -1215,15 +1250,19 @@ export class RunScene implements IScene {
     this.replayT = 0;
     this.ended = false;
     this.drones = [];
+    this.asteroids = [];
     this.projectiles = [];
     this.enemyBullets = [];
     this.smokeTrail = [];
     this.lastTrailTime = 0;
     this.clearWorldCoins();
     this.clearDroneSprites();
+    this.clearAsteroidSprites();
     this.fxManager.clear();
     this.deathEventsThisFrame = [];
+    this.asteroidDeathsThisFrame = [];
     this.spawner.reset();
+    this.asteroidSpawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
     this.tierSys.reset();
@@ -1262,15 +1301,19 @@ export class RunScene implements IScene {
   private resetRocket() {
     this.ended = false;
     this.drones = [];
+    this.asteroids = [];
     this.projectiles = [];
     this.enemyBullets = [];
     this.smokeTrail = [];
     this.lastTrailTime = 0;
     this.clearWorldCoins();
     this.clearDroneSprites();
+    this.clearAsteroidSprites();
     this.fxManager.clear();
     this.deathEventsThisFrame = [];
+    this.asteroidDeathsThisFrame = [];
     this.spawner.reset();
+    this.asteroidSpawner.reset();
     this.weapon.reset();
     this.droneAI.reset();
     this.tierSys.reset();
@@ -1370,6 +1413,13 @@ export class RunScene implements IScene {
       tier,
       dt
     );
+    this.asteroidSpawner.step(
+      this.player,
+      this.asteroids,
+      this.runState.rng,
+      tier,
+      dt
+    );
     this.droneAI.step(this.player, this.drones, this.enemyBullets, dt);
 
     this.weapon.step(
@@ -1381,15 +1431,25 @@ export class RunScene implements IScene {
     );
 
     const killsBefore = this.player.kills;
-    const { deaths } = this.collide.step(
+    const { deaths, asteroidDeaths } = this.collide.step(
       this.player,
       this.drones,
       this.projectiles,
       this.enemyBullets,
+      this.asteroids,
       ps,
       dt
     );
     this.deathEventsThisFrame = deaths;
+    this.asteroidDeathsThisFrame = asteroidDeaths;
+    for (const ad of asteroidDeaths) {
+      let scrapEarned = Math.round(ad.scrapReward * tier.reward.scrapMult);
+      if (this.runState.appliedArtifacts.has("scrap_magnet")) {
+        scrapEarned = Math.round(scrapEarned * 1.25);
+      }
+      this.runState.scrap += scrapEarned;
+      this.runState.totalScrap += scrapEarned;
+    }
     const killsDelta = this.player.kills - killsBefore;
     if (killsDelta > 0) {
       for (let i = 0; i < killsDelta; i++) {
@@ -1411,6 +1471,7 @@ export class RunScene implements IScene {
     }
 
     this.cullOffScreenDrones();
+    this.cullOffScreenAsteroids();
 
     this.spawnCoinsAhead();
     this.collectCoins();
@@ -1878,6 +1939,51 @@ export class RunScene implements IScene {
       }
     }
     this.deathEventsThisFrame = [];
+
+    // Asteroids: drift sprites with size-based scale and rotation
+    const ASTEROID_BASE_SCALE = 0.28;
+    const aliveAsteroidIds = new Set<number>();
+    for (const a of this.asteroids) {
+      if (!a.alive) continue;
+      aliveAsteroidIds.add(a.id);
+      const tex = getAsteroidTexture(a.spriteIndex);
+      if (!tex) continue;
+      let sprite = this.asteroidSprites.get(a.id);
+      if (!sprite) {
+        sprite = new Sprite(tex);
+        sprite.anchor.set(0.5);
+        const sizeScale = TUNING.asteroid[a.sizeClass].scale;
+        sprite.scale.set(ASTEROID_BASE_SCALE * sizeScale);
+        sprite.tint = 0xffffff;
+        this.asteroidContainer.addChild(sprite);
+        this.asteroidSprites.set(a.id, sprite);
+      }
+      sprite.x = a.pos.x;
+      sprite.y = a.pos.y;
+      sprite.rotation = a.rotation;
+    }
+    for (const ad of this.asteroidDeathsThisFrame) {
+      const sprite = this.asteroidSprites.get(ad.id);
+      if (sprite) {
+        this.fxManager.spawnEnemyDeathFx(
+          app.renderer,
+          sprite,
+          ad.pos,
+          ad.vel
+        );
+        this.asteroidContainer.removeChild(sprite);
+        sprite.destroy();
+        this.asteroidSprites.delete(ad.id);
+      }
+    }
+    this.asteroidDeathsThisFrame = [];
+    for (const [id, sprite] of Array.from(this.asteroidSprites.entries())) {
+      if (!aliveAsteroidIds.has(id)) {
+        this.asteroidContainer.removeChild(sprite);
+        sprite.destroy();
+        this.asteroidSprites.delete(id);
+      }
+    }
 
     // Enemy bullets
     for (const eb of this.enemyBullets) {

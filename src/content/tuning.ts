@@ -113,5 +113,19 @@ export const TUNING = {
     bulletRadius: 5,
     spawnRatio: 0.25,
     minDistanceM: 200
-  }
+  },
+  asteroid: {
+    /** Spawn interval = baseSpawnInterval / asteroidDensity (sec). Low base = high spawn rate so density ~fill feel (e.g. 0.35 → many on screen). */
+    baseSpawnInterval: 0.5,
+    maxAlive: 55,
+    cullBehindPx: 1800,
+    /** Player hits asteroid: vel *= this. */
+    playerMomentumRetain: 0.35,
+    /** Player HP damage per frame when touching asteroid. */
+    playerContactDamage: 2,
+    /** Visual scale: small = 1, then scale up so sky feels filled at all heights. */
+    small: { scale: 1, hp: 40, radius: 18, scrapReward: 20 },
+    medium: { scale: 1.25, hp: 90, radius: 28, scrapReward: 35 },
+    large: { scale: 1.5, hp: 160, radius: 40, scrapReward: 50 },
+  },
 } as const;

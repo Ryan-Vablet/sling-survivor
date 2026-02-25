@@ -9,6 +9,7 @@ export function assetUrl(path: string): string {
 /** Cached textures (loaded once in loadAssets). */
 let rocketTexture: Texture | null = null;
 let ufoTexture: Texture | null = null;
+const asteroidTextures: (Texture | null)[] = [];
 
 export function getRocketTexture(): Texture | null {
   return rocketTexture;
@@ -18,9 +19,15 @@ export function getUfoTexture(): Texture | null {
   return ufoTexture;
 }
 
+/** Asteroid sprite 1–6. Index 0 = asteroid_1.png. */
+export function getAsteroidTexture(index: number): Texture | null {
+  const i = Math.max(0, Math.min(5, Math.floor(index) - 1));
+  return asteroidTextures[i] ?? null;
+}
+
 /**
  * Load and cache game assets. Call once at scene enter.
- * Phase 6.0: player rocket + enemy UFO sprites.
+ * Phase 6.0: player rocket + enemy UFO. Phase 7: asteroids 1–6.
  */
 export async function loadAssets(): Promise<void> {
   try {
@@ -32,5 +39,14 @@ export async function loadAssets(): Promise<void> {
     ufoTexture = await Assets.load<Texture>(assetUrl("/assets/enemies/ufo.png"));
   } catch {
     ufoTexture = null;
+  }
+  for (let i = 1; i <= 6; i++) {
+    try {
+      asteroidTextures[i - 1] = await Assets.load<Texture>(
+        assetUrl(`/assets/enemies/asteroid_${i}.png`)
+      );
+    } catch {
+      asteroidTextures[i - 1] = null;
+    }
   }
 }

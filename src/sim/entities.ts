@@ -61,3 +61,21 @@ export type WorldCoin = {
   alive: boolean;
   bobPhase: number;
 };
+
+export type AsteroidSizeClass = "small" | "medium" | "large";
+
+export type Asteroid = {
+  id: number;
+  pos: Vec2;
+  vel: Vec2;
+  radius: number;
+  hp: number;
+  /** 1–6, which asteroid_X.png to use. */
+  spriteIndex: number;
+  sizeClass: AsteroidSizeClass;
+  rotation: number;
+  spinSpeed: number;
+  alive: boolean;
+  /** Scrap reward (base, before tier mult). */
+  scrapReward: number;
+};

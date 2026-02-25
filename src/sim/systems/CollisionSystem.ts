@@ -1,5 +1,5 @@
 import { TUNING } from "../../content/tuning";
-import type { Drone, Player, Projectile, EnemyBullet } from "../entities";
+import type { Asteroid, Drone, Player, Projectile, EnemyBullet } from "../entities";
 import type { DerivedPlayerStats } from "../runtime/RunState";
 
 export type DroneDeathEvent = {
@@ -10,16 +10,25 @@ export type DroneDeathEvent = {
   droneType: Drone["droneType"];
 };
 
+export type AsteroidDeathEvent = {
+  id: number;
+  pos: { x: number; y: number };
+  vel: { x: number; y: number };
+  scrapReward: number;
+};
+
 export class CollisionSystem {
   step(
     player: Player,
     drones: Drone[],
     projectiles: Projectile[],
     enemyBullets: EnemyBullet[],
+    asteroids: Asteroid[],
     stats: DerivedPlayerStats,
     dt: number
-  ): { deaths: DroneDeathEvent[] } {
+  ): { deaths: DroneDeathEvent[]; asteroidDeaths: AsteroidDeathEvent[] } {
     const deaths: DroneDeathEvent[] = [];
+    const asteroidDeaths: AsteroidDeathEvent[] = [];
     // Player projectiles vs drones
     for (const p of projectiles) {
       if (!p.alive) continue;
@@ -57,6 +66,27 @@ export class CollisionSystem {
           }
         }
       }
+
+      for (const a of asteroids) {
+        if (!a.alive) continue;
+        const dx = a.pos.x - p.pos.x;
+        const dy = a.pos.y - p.pos.y;
+        const rr = a.radius + p.radius;
+        if (dx * dx + dy * dy <= rr * rr) {
+          a.hp -= p.damage;
+          if (a.hp <= 0) {
+            a.alive = false;
+            asteroidDeaths.push({
+              id: a.id,
+              pos: { x: a.pos.x, y: a.pos.y },
+              vel: { x: a.vel.x, y: a.vel.y },
+              scrapReward: a.scrapReward,
+            });
+          }
+          p.alive = false;
+          break;
+        }
+      }
     }
 
     // Drone body contact vs player
@@ -76,6 +106,20 @@ export class CollisionSystem {
 
         d.pos.x += dx * 0.2;
         d.pos.y += dy * 0.2;
+      }
+    }
+
+    // Asteroid body vs player: momentum loss + small HP damage
+    for (const a of asteroids) {
+      if (!a.alive) continue;
+      const dx = a.pos.x - player.pos.x;
+      const dy = a.pos.y - player.pos.y;
+      const rr = a.radius + player.radius;
+      if (dx * dx + dy * dy <= rr * rr) {
+        player.vel.x *= TUNING.asteroid.playerMomentumRetain;
+        player.vel.y *= TUNING.asteroid.playerMomentumRetain;
+        player.hp = Math.max(0, player.hp - TUNING.asteroid.playerContactDamage);
+        player.hits += 1;
       }
     }
 
@@ -111,6 +155,9 @@ export class CollisionSystem {
     for (let i = enemyBullets.length - 1; i >= 0; i--) {
       if (!enemyBullets[i].alive) enemyBullets.splice(i, 1);
     }
-    return { deaths };
+    for (let i = asteroids.length - 1; i >= 0; i--) {
+      if (!asteroids[i].alive) asteroids.splice(i, 1);
+    }
+    return { deaths, asteroidDeaths };
   }
 }
