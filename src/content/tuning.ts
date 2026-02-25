@@ -32,7 +32,9 @@ export const TUNING = {
     maxAlive: 8,
     droneSpeed: 220,
     contactSpeedRetain: 0.75,
-    dragDebuffSec: 0.75
+    dragDebuffSec: 0.75,
+    /** Cull drones this far behind player (px). No points/FX; frees spawn cap. */
+    cullBehindPx: 1600,
   },
   weapon: {
     fireCooldown: 0.35,
@@ -83,7 +85,7 @@ export const TUNING = {
     spawnIntervalDecay: 0.0005,
     spawnIntervalMin: 0.8,
     maxAliveGrowth: 0.005,
-    maxAliveCap: 15
+    maxAliveCap: 20,
   },
   fx: {
     shatterGridW: 5,

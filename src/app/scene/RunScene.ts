@@ -451,6 +451,22 @@ export class RunScene implements IScene {
     this.droneSprites.clear();
   }
 
+  /** Remove drones far behind the player so they stop counting toward maxAlive. No points or FX. */
+  private cullOffScreenDrones(): void {
+    const threshold = this.player.pos.x - TUNING.enemy.cullBehindPx;
+    for (let i = this.drones.length - 1; i >= 0; i--) {
+      if (this.drones[i].pos.x >= threshold) continue;
+      const id = this.drones[i].id;
+      this.drones.splice(i, 1);
+      const sprite = this.droneSprites.get(id);
+      if (sprite) {
+        this.droneContainer.removeChild(sprite);
+        sprite.destroy();
+        this.droneSprites.delete(id);
+      }
+    }
+  }
+
   /** Apply a single replay snapshot to RunScene state (used for initial frame and for interpolation result). */
   private applyReplaySnapshotToState(snapshot: ReplaySnapshot): void {
     const sp = snapshot.player;
@@ -1393,6 +1409,8 @@ export class RunScene implements IScene {
       this.runState.currentXp += killsDelta * TUNING.xp.perKill;
       this.runState.totalKills += killsDelta;
     }
+
+    this.cullOffScreenDrones();
 
     this.spawnCoinsAhead();
     this.collectCoins();
