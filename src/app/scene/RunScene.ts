@@ -23,6 +23,7 @@ import { StallSystem } from "../../sim/systems/StallSystem";
 import { UpgradeSystem } from "../../sim/systems/UpgradeSystem";
 import { EvolutionSystem } from "../../sim/systems/EvolutionSystem";
 import { TierSystem } from "../../sim/systems/TierSystem";
+import { TIER_DEFS } from "../../content/tiers/tierDefs";
 import { RunState } from "../../sim/runtime/RunState";
 import { rollUpgradeChoices } from "../../content/upgrades/upgradePool";
 import { UPGRADE_DEFS } from "../../content/upgrades/upgradeDefs";
@@ -271,6 +272,21 @@ export class RunScene implements IScene {
       if (import.meta.env.DEV && e.key.toLowerCase() === "g") {
         this.runState.rocketsRemaining = 1;
         this.endRocket();
+        return;
+      }
+      if (import.meta.env.DEV && e.key.toLowerCase() === "t") {
+        const curIdx = TIER_DEFS.findIndex((t) => t.id === this.tierSys.currentTier.id);
+        const hasOverride = this.tierSys.debugTierOverride != null;
+        const nextIdx = hasOverride ? (curIdx + 1) % (TIER_DEFS.length + 1) : 0;
+        if (nextIdx >= TIER_DEFS.length) {
+          this.tierSys.setDebugTier(null);
+          this.tierSys.update((this.player.pos.x - TUNING.launcher.originX) / 10);
+          this.toast.show("Debug: tier from distance", 2);
+        } else {
+          const next = TIER_DEFS[nextIdx];
+          this.tierSys.setDebugTier(next);
+          this.toast.show(`Debug: ${next.shortLabel} — ${next.name}`, 2);
+        }
         return;
       }
       if (!this.player.launched) return;
